@@ -1,20 +1,33 @@
 package pqcli;
 
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.asn1.x509.BasicConstraints;
+import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.Extensions;
+import org.bouncycastle.asn1.x509.SubjectAltPublicKeyInfo;
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
+import org.bouncycastle.cert.X509CertificateHolder;
+import org.bouncycastle.jcajce.CompositePublicKey;
+
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
 
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.security.PublicKey;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.security.interfaces.ECPublicKey;
+import java.security.interfaces.RSAPublicKey;
+import java.text.SimpleDateFormat;
 import java.util.Base64;
-import java.util.concurrent.Callable;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
-
-@Command(name="view", description="View information about a certificate")
+@Command(name = "view", description = "View information about a certificate")
 public class ViewCommand implements Callable<Integer> {
     @Parameters(index = "0", description = "The certificate file to view")
     private String certificateFile;
@@ -24,9 +37,8 @@ public class ViewCommand implements Callable<Integer> {
         ProviderSetup.setupProvider();
         try {
             X509Certificate cert = loadCertificate(certificateFile);
-            //X509CertificateObject bcCertHolder = new X509CertificateHolder(cert.getEncoded());
-            //System.out.println(bcCertHolder);
-            System.out.println(cert);
+            X509CertificateHolder holder = new X509CertificateHolder(cert.getEncoded());
+            printCertInfo(cert, holder);
         } catch (Exception e) {
             System.err.println("Error during certificate loading: " + e.getMessage());
             return 1;
@@ -34,10 +46,185 @@ public class ViewCommand implements Callable<Integer> {
         return 0;
     }
 
+    private static void printCertInfo(X509Certificate cert, X509CertificateHolder holder) {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
+
+        System.out.println("=== Certificate ===");
+        System.out.println("Subject:     " + cert.getSubjectX500Principal().getName());
+        System.out.println("Issuer:      " + cert.getIssuerX500Principal().getName());
+        System.out.println("Serial:      " + cert.getSerialNumber().toString(16).toUpperCase());
+        System.out.println("Not Before:  " + sdf.format(cert.getNotBefore()));
+        System.out.println("Not After:   " + sdf.format(cert.getNotAfter()));
+
+        String sigAlgOid = cert.getSigAlgOID();
+        System.out.println("Sig Alg:     " + oidToName(sigAlgOid) + "  (OID: " + sigAlgOid + ")");
+
+        System.out.println();
+        System.out.println("--- Public Key ---");
+        printPublicKeyInfo(cert.getPublicKey(), holder.getSubjectPublicKeyInfo());
+
+        Extensions extensions = holder.getExtensions();
+        if (extensions != null) {
+            ASN1ObjectIdentifier[] oids = extensions.getExtensionOIDs();
+            if (oids != null && oids.length > 0) {
+                System.out.println();
+                System.out.println("--- Extensions (" + oids.length + ") ---");
+                for (ASN1ObjectIdentifier oid : oids) {
+                    Extension ext = extensions.getExtension(oid);
+                    String marker = ext.isCritical() ? "[critical]" : "[        ]";
+                    printExtension(marker, oid, ext, cert);
+                }
+            }
+        }
+    }
+
+    private static void printPublicKeyInfo(PublicKey publicKey, SubjectPublicKeyInfo spki) {
+        if (publicKey instanceof CompositePublicKey) {
+            CompositePublicKey compositeKey = (CompositePublicKey) publicKey;
+            String compOid = spki.getAlgorithm().getAlgorithm().getId();
+            System.out.println("  Type:       Composite  (OID: " + compOid + ")");
+            List<PublicKey> components = compositeKey.getPublicKeys();
+            System.out.println("  Components: " + components.size());
+            for (int i = 0; i < components.size(); i++) {
+                PublicKey comp = components.get(i);
+                System.out.println("    [" + i + "] " + comp.getAlgorithm() + "  — " + keyDetails(comp));
+            }
+        } else {
+            String algoOid = spki.getAlgorithm().getAlgorithm().getId();
+            System.out.println("  Algorithm:  " + oidToName(algoOid) + "  (OID: " + algoOid + ")");
+            System.out.println("  Details:    " + keyDetails(publicKey));
+        }
+    }
+
+    private static String keyDetails(PublicKey key) {
+        if (key instanceof RSAPublicKey) {
+            return ((RSAPublicKey) key).getModulus().bitLength() + " bits";
+        }
+        if (key instanceof ECPublicKey) {
+            ECPublicKey ecKey = (ECPublicKey) key;
+            if (ecKey.getParams() instanceof org.bouncycastle.jce.spec.ECNamedCurveSpec) {
+                return "curve=" + ((org.bouncycastle.jce.spec.ECNamedCurveSpec) ecKey.getParams()).getName();
+            }
+            return "~" + ecKey.getW().getAffineX().bitLength() + " bits";
+        }
+        // PQC / unknown: show encoded length as rough indicator
+        byte[] enc = key.getEncoded();
+        return "encoded " + (enc != null ? enc.length : "?") + " bytes";
+    }
+
+    private static void printExtension(String marker, ASN1ObjectIdentifier oid, Extension ext, X509Certificate cert) {
+        if (oid.equals(Extension.basicConstraints)) {
+            String decoded;
+            try {
+                decoded = "CA:" + BasicConstraints.getInstance(ext.getParsedValue()).isCA();
+            } catch (Exception e) {
+                decoded = "(parse error)";
+            }
+            System.out.println(marker + " Basic Constraints: " + decoded);
+
+        } else if (oid.equals(Extension.keyUsage)) {
+            System.out.println(marker + " Key Usage: " + decodeKeyUsage(cert));
+
+        } else if (oid.equals(Extension.subjectAltPublicKeyInfo)) {
+            System.out.println(marker + " Subject Alt Public Key Info  (OID: " + oid.getId() + ")");
+            try {
+                SubjectAltPublicKeyInfo altKeyInfo = SubjectAltPublicKeyInfo.getInstance(ext.getParsedValue());
+                AlgorithmIdentifier algoId = altKeyInfo.getAlgorithm();
+                String algoOid = algoId.getAlgorithm().getId();
+                System.out.println("             Algorithm: " + oidToName(algoOid) + "  (OID: " + algoOid + ")");
+            } catch (Exception e) {
+                System.out.println("             (parse error: " + e.getMessage() + ")");
+            }
+
+        } else if (oid.equals(Extension.altSignatureAlgorithm)) {
+            System.out.println(marker + " Alt Signature Algorithm  (OID: " + oid.getId() + ")");
+            try {
+                AlgorithmIdentifier algoId = AlgorithmIdentifier.getInstance(ext.getParsedValue());
+                String algoOid = algoId.getAlgorithm().getId();
+                System.out.println("             Algorithm: " + oidToName(algoOid) + "  (OID: " + algoOid + ")");
+            } catch (Exception e) {
+                System.out.println("             (parse error: " + e.getMessage() + ")");
+            }
+
+        } else if (oid.equals(Extension.altSignatureValue)) {
+            System.out.println(marker + " Alt Signature Value  (OID: " + oid.getId() + ")");
+
+        } else {
+            System.out.println(marker + " " + oidToName(oid.getId()) + "  (OID: " + oid.getId() + ")");
+        }
+    }
+
+    private static String decodeKeyUsage(X509Certificate cert) {
+        boolean[] usage = cert.getKeyUsage();
+        if (usage == null) return "(none)";
+        String[] names = {
+            "digitalSignature", "nonRepudiation", "keyEncipherment",
+            "dataEncipherment", "keyAgreement", "keyCertSign",
+            "cRLSign", "encipherOnly", "decipherOnly"
+        };
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < usage.length && i < names.length; i++) {
+            if (usage[i]) {
+                if (sb.length() > 0) sb.append(", ");
+                sb.append(names[i]);
+            }
+        }
+        return sb.length() > 0 ? sb.toString() : "(none)";
+    }
+
+    /** Resolve well-known OIDs to human-readable algorithm names. */
+    static String oidToName(String oid) {
+        switch (oid) {
+            // RSA key / sig
+            case "1.2.840.113549.1.1.1":  return "RSA";
+            case "1.2.840.113549.1.1.11": return "SHA256withRSA";
+            case "1.2.840.113549.1.1.12": return "SHA384withRSA";
+            case "1.2.840.113549.1.1.13": return "SHA512withRSA";
+            // ECDSA
+            case "1.2.840.10045.2.1":     return "EC";
+            case "1.2.840.10045.4.3.2":   return "SHA256withECDSA";
+            case "1.2.840.10045.4.3.3":   return "SHA384withECDSA";
+            case "1.2.840.10045.4.3.4":   return "SHA512withECDSA";
+            // EdDSA
+            case "1.3.101.112":           return "Ed25519";
+            case "1.3.101.113":           return "Ed448";
+            // ML-DSA (FIPS 204, NIST final)
+            case "2.16.840.1.101.3.4.3.17": return "ML-DSA-44";
+            case "2.16.840.1.101.3.4.3.18": return "ML-DSA-65";
+            case "2.16.840.1.101.3.4.3.19": return "ML-DSA-87";
+            // SLH-DSA SHA2 (FIPS 205)
+            case "2.16.840.1.101.3.4.3.20": return "SLH-DSA-SHA2-128s";
+            case "2.16.840.1.101.3.4.3.21": return "SLH-DSA-SHA2-128f";
+            case "2.16.840.1.101.3.4.3.22": return "SLH-DSA-SHA2-192s";
+            case "2.16.840.1.101.3.4.3.23": return "SLH-DSA-SHA2-192f";
+            case "2.16.840.1.101.3.4.3.24": return "SLH-DSA-SHA2-256s";
+            case "2.16.840.1.101.3.4.3.25": return "SLH-DSA-SHA2-256f";
+            // SLH-DSA SHAKE (FIPS 205)
+            case "2.16.840.1.101.3.4.3.26": return "SLH-DSA-SHAKE-128s";
+            case "2.16.840.1.101.3.4.3.27": return "SLH-DSA-SHAKE-128f";
+            case "2.16.840.1.101.3.4.3.28": return "SLH-DSA-SHAKE-192s";
+            case "2.16.840.1.101.3.4.3.29": return "SLH-DSA-SHAKE-192f";
+            case "2.16.840.1.101.3.4.3.30": return "SLH-DSA-SHAKE-256s";
+            case "2.16.840.1.101.3.4.3.31": return "SLH-DSA-SHAKE-256f";
+            // Composite (draft OIDs used by BC 1.80)
+            case "1.3.6.1.4.1.18227.2.1":   return "Composite-Sig (draft)";
+            case "2.16.840.1.114027.80.4.1": return "Composite-Sig (draft)";
+            // Standard X.509 extensions
+            case "2.5.29.14": return "Subject Key Identifier";
+            case "2.5.29.15": return "Key Usage";
+            case "2.5.29.17": return "Subject Alt Name";
+            case "2.5.29.19": return "Basic Constraints";
+            case "2.5.29.35": return "Authority Key Identifier";
+            case "2.5.29.72": return "Subject Alt Public Key Info";
+            case "2.5.29.73": return "Alt Signature Algorithm";
+            case "2.5.29.74": return "Alt Signature Value";
+            default: return oid;
+        }
+    }
+
     private static X509Certificate loadCertificate(String pemFilePath) throws Exception {
         List<String> lines = Files.readAllLines(Paths.get(pemFilePath));
 
-        // check if key or certificate
         if (lines.get(0).contains("KEY---")) {
             throw new IllegalArgumentException("Viewing key data is not yet supported");
         }
@@ -53,5 +240,4 @@ public class ViewCommand implements Callable<Integer> {
         CertificateFactory certFactory = CertificateFactory.getInstance("X.509", "BC");
         return (X509Certificate) certFactory.generateCertificate(new ByteArrayInputStream(decoded));
     }
-
 }
