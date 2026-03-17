@@ -87,10 +87,6 @@ public class CertificateGenerator implements Callable<Integer> {
                 }
             }
 
-            if (signatureAlgorithmSet.isHybrid()) {
-                altSignatureKeyPair = KeyGenerator.generateKeyPair(signatureAlgorithmSet.getAltAlgorithms());
-            }
-
             // Create X.509 certificate
             X509Certificate certificate;
             certificate = generateCertificate(signatureAlgorithmSet, signatureKeyPair, altSignatureKeyPair, subject, validityDaysD);
@@ -253,9 +249,8 @@ public class CertificateGenerator implements Callable<Integer> {
     private static void saveCertificateToFile(String fileName, X509Certificate certificate) throws IOException, CertificateEncodingException {
         try (OutputStream os = new FileOutputStream(fileName)) {
             os.write(("-----BEGIN CERTIFICATE-----\n").getBytes());
-            String encodedCert = Base64.getEncoder().encodeToString(certificate.getEncoded());
-            os.write(encodedCert.getBytes());
-            os.write(("\n-----END CERTIFICATE-----\n").getBytes());
+            os.write(KeyGenerator.wrapBase64(certificate.getEncoded()).getBytes());
+            os.write(("-----END CERTIFICATE-----\n").getBytes());
         }
     }
 
