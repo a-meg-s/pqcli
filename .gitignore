@@ -12,6 +12,10 @@ target/
 *.war
 *.ear
 
+# Local development tracking (not for repo)
+TASKS.md
+DEVLOG.md
+
 # (Test) certificate and key files
 *.pem
 *.crt
