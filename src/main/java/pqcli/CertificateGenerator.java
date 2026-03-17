@@ -101,7 +101,9 @@ public class CertificateGenerator implements Callable<Integer> {
             saveCertificateToFile("certificate.pem", certificate);
 
             System.out.println("Certificate and key saved successfully!");
-            System.out.println(certificate);
+            System.out.println("  Subject:    " + certificate.getSubjectX500Principal().getName());
+            System.out.println("  Algorithm:  " + certificate.getSigAlgName());
+            System.out.println("  Valid until:" + certificate.getNotAfter());
 
         } catch (Exception e) {
             System.err.println("Error during certificate generation: " + e.getMessage());

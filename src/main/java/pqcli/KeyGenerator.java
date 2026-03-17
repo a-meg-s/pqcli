@@ -39,8 +39,8 @@ public class KeyGenerator implements Callable<Integer> {
             KeyPair keyPair = generateKeyPair(algorithmSet.getAlgorithms());
             saveKeyToFile("private_key.pem", keyPair.getPrivate());
             saveKeyToFile("public_key.pem", keyPair.getPublic());
-            System.out.println(keyPair);
             System.out.println("Key pair saved successfully!");
+            System.out.println("  Algorithm:  " + keyPair.getPublic().getAlgorithm());
 
             if (algorithmSet.isHybrid()) {
                 KeyPair altKeyPair = generateKeyPair(algorithmSet.getAltAlgorithms());
