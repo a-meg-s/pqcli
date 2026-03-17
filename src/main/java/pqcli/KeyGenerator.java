@@ -230,18 +230,20 @@ public class KeyGenerator implements Callable<Integer> {
 
     public static void saveKeyToFile(String fileName, Key key) throws IOException {
         try (OutputStream os = new FileOutputStream(fileName)) {
-            String encodedKey = Base64.getEncoder().encodeToString(key.getEncoded());
-            if (key instanceof PrivateKey) {
-                os.write(("-----BEGIN PRIVATE KEY-----\n").getBytes());
-            } else {
-                os.write(("-----BEGIN PUBLIC KEY-----\n").getBytes());
-            }
-            os.write(encodedKey.getBytes());
-            if (key instanceof PrivateKey) {
-                os.write(("\n-----END PRIVATE KEY-----\n").getBytes());
-            } else {
-                os.write(("\n-----END PUBLIC KEY-----\n").getBytes());
-            }
+            String header = (key instanceof PrivateKey) ? "PRIVATE KEY" : "PUBLIC KEY";
+            os.write(("-----BEGIN " + header + "-----\n").getBytes());
+            os.write(wrapBase64(key.getEncoded()).getBytes());
+            os.write(("-----END " + header + "-----\n").getBytes());
         }
+    }
+
+    static String wrapBase64(byte[] data) {
+        String encoded = Base64.getEncoder().encodeToString(data);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < encoded.length(); i += 64) {
+            sb.append(encoded, i, Math.min(i + 64, encoded.length()));
+            sb.append('\n');
+        }
+        return sb.toString();
     }
 }
