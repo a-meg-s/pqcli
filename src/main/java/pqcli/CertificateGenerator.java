@@ -32,10 +32,15 @@ import java.util.regex.*;
 @Command(name="cert", description="Generates an X.509 v3 certificate with a public/private key pair")
 public class CertificateGenerator implements Callable<Integer> {
 
-    @Option(names = { "-sig", "-s" }, description = "Signature algorithm (e.g. SHA256withRSA or SHA3-512withDilithium)")
+    @Option(names = { "-sig", "-s" }, description = "Signature algorithm override. Auto-derived from key algorithm if omitted.")
     private String signatureAlgorithm;
 
-    @Option(names = { "-newkey", "-nk" }, description = "Key algorithm (e.g. RSA:4096, EC, DSA or Dilithium:3)", required = true)
+    @Option(names = { "-newkey", "-nk" }, required = true, description = {
+        "Key algorithm. Single: RSA:3072, EC:secp256r1, DSA:2048, Ed25519, Ed448,",
+        "  ML-DSA:44/65/87, SLH-DSA:128s/128f/192s/192f/256s/256f,",
+        "  SLH-DSA:shake-128s/shake-128f/shake-192s/shake-192f/shake-256s/shake-256f.",
+        "  Hybrid (comma): RSA:3072,ML-DSA:65.  Composite (underscore): RSA:3072_ML-DSA:65."
+    })
     private String keyAlgorithm;
 
     @Option(names = { "-days", "-d" }, description = "Certificate validity in days", required = false, defaultValue = "365")
@@ -134,7 +139,7 @@ public class CertificateGenerator implements Callable<Integer> {
         return 0;
 	}
 	
-	private static String getSuitableSignatureAlgorithm(AlgorithmWithParameters keyAlgorithm) {
+	static String getSuitableSignatureAlgorithm(AlgorithmWithParameters keyAlgorithm) {
         String name = keyAlgorithm.algorithm;
         String params = keyAlgorithm.keySizeOrCurve;
 
@@ -272,7 +277,7 @@ public class CertificateGenerator implements Callable<Integer> {
         return new JcaContentSignerBuilder("Composite", compAlgSpec).setProvider("BC").build(compPrivKey);
     }
 
-    private static void saveCertificateToFile(String fileName, X509Certificate certificate) throws IOException, CertificateEncodingException {
+    static void saveCertificateToFile(String fileName, X509Certificate certificate) throws IOException, CertificateEncodingException {
         try (OutputStream os = new FileOutputStream(fileName)) {
             os.write(("-----BEGIN CERTIFICATE-----\n").getBytes());
             os.write(KeyGenerator.wrapBase64(certificate.getEncoded()).getBytes());

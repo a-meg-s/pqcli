@@ -28,7 +28,12 @@ import picocli.CommandLine.Option;
 
 @Command(name="key", description="Generates a public/private key pair")
 public class KeyGenerator implements Callable<Integer> {
-    @Option(names = { "-newkey", "-nk", "-new", "-t" }, description = "Key algorithm (e.g. RSA:4096, EC, DSA or Dilithium:3)", required = true)
+    @Option(names = { "-newkey", "-nk", "-new", "-t" }, required = true, description = {
+        "Key algorithm. Single: RSA:3072, EC:secp256r1, DSA:2048, Ed25519, Ed448,",
+        "  ML-DSA:44/65/87, SLH-DSA:128s/128f/192s/192f/256s/256f,",
+        "  SLH-DSA:shake-128s/shake-128f/shake-192s/shake-192f/shake-256s/shake-256f.",
+        "  Hybrid (comma): RSA:3072,ML-DSA:65.  Composite (underscore): RSA:3072_ML-DSA:65."
+    })
     private String keyAlgorithm;
 
     @Option(names = { "-out", "-o" }, description = "Output filename prefix (e.g. 'rsa3072' → rsa3072_private_key.pem)", defaultValue = "")
