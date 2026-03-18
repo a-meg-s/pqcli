@@ -31,32 +31,50 @@ public class KeyGenerator implements Callable<Integer> {
     @Option(names = { "-newkey", "-nk", "-new", "-t" }, description = "Key algorithm (e.g. RSA:4096, EC, DSA or Dilithium:3)", required = true)
     private String keyAlgorithm;
 
+    @Option(names = { "-out", "-o" }, description = "Output filename prefix (e.g. 'rsa3072' → rsa3072_private_key.pem)", defaultValue = "")
+    private String outPrefix;
+
+    @Option(names = "--timing", description = "Print key generation timing", defaultValue = "false")
+    private boolean printTiming;
+
+    private String prefixed(String name) {
+        return outPrefix.isEmpty() ? name : outPrefix + "_" + name;
+    }
+
     public Integer call() throws Exception {
         ProviderSetup.setupProvider();
         try {
             AlgorithmSet algorithmSet = new AlgorithmSet(keyAlgorithm);
 
+            long t0 = System.currentTimeMillis();
             KeyPair keyPair = generateKeyPair(algorithmSet.getAlgorithms());
-            saveKeyToFile("private_key.pem", keyPair.getPrivate());
-            saveKeyToFile("public_key.pem", keyPair.getPublic());
+            long keyGenMs = System.currentTimeMillis() - t0;
+
+            saveKeyToFile(prefixed("private_key.pem"), keyPair.getPrivate());
+            saveKeyToFile(prefixed("public_key.pem"), keyPair.getPublic());
             System.out.println("Key pair saved successfully!");
             System.out.println("  Algorithm:    " + keyPair.getPublic().getAlgorithm());
             System.out.println("  Public key:   " + keyPair.getPublic().getClass().getSimpleName()
                     + " (" + keyPair.getPublic().getEncoded().length + " bytes encoded)");
             System.out.println("  Private key:  " + keyPair.getPrivate().getClass().getSimpleName()
                     + " (" + keyPair.getPrivate().getEncoded().length + " bytes encoded)");
+            if (printTiming) System.out.println("  Key gen time: " + keyGenMs + " ms");
             System.out.println(keyPair);
 
             if (algorithmSet.isHybrid()) {
+                long t1 = System.currentTimeMillis();
                 KeyPair altKeyPair = generateKeyPair(algorithmSet.getAltAlgorithms());
-                saveKeyToFile("alt_private_key.pem", altKeyPair.getPrivate());
-                saveKeyToFile("alt_public_key.pem", altKeyPair.getPublic());
+                long altKeyGenMs = System.currentTimeMillis() - t1;
+
+                saveKeyToFile(prefixed("alt_private_key.pem"), altKeyPair.getPrivate());
+                saveKeyToFile(prefixed("alt_public_key.pem"), altKeyPair.getPublic());
                 System.out.println("Alternative key pair saved successfully!");
                 System.out.println("  Algorithm:    " + altKeyPair.getPublic().getAlgorithm());
                 System.out.println("  Public key:   " + altKeyPair.getPublic().getClass().getSimpleName()
                         + " (" + altKeyPair.getPublic().getEncoded().length + " bytes encoded)");
                 System.out.println("  Private key:  " + altKeyPair.getPrivate().getClass().getSimpleName()
                         + " (" + altKeyPair.getPrivate().getEncoded().length + " bytes encoded)");
+                if (printTiming) System.out.println("  Key gen time: " + altKeyGenMs + " ms");
                 System.out.println(altKeyPair);
             }
 
@@ -196,13 +214,14 @@ public class KeyGenerator implements Callable<Integer> {
             // Initialisation for PQC Algorithm SLH-DSA / FIPS 205 (based on SPHINCS+)
             keyPairGenerator = KeyPairGenerator.getInstance("SLH-DSA", "BC");
 
-            // SPHINCS+ security level (128, 192, 256 available). s and f postfixes supported. SHAKE not supported for now.
+            // SHA2 variants: 128s, 128f, 192s, 192f, 256s, 256f (default when no prefix)
+            // SHAKE variants: shake-128s, shake-128f, shake-192s, shake-192f, shake-256s, shake-256f
             String level = curveOrKeyLength;
             SLHDSAParameterSpec spec;
             switch (level) {
                 case "128":
                 case "128s":
-                    spec = SLHDSAParameterSpec.slh_dsa_sha2_128s; // TODO: need to use _with_sha256?
+                    spec = SLHDSAParameterSpec.slh_dsa_sha2_128s;
                     break;
                 case "128f":
                     spec = SLHDSAParameterSpec.slh_dsa_sha2_128f;
@@ -221,8 +240,28 @@ public class KeyGenerator implements Callable<Integer> {
                 case "256f":
                     spec = SLHDSAParameterSpec.slh_dsa_sha2_256f;
                     break;
+                case "shake-128s":
+                    spec = SLHDSAParameterSpec.slh_dsa_shake_128s;
+                    break;
+                case "shake-128f":
+                    spec = SLHDSAParameterSpec.slh_dsa_shake_128f;
+                    break;
+                case "shake-192s":
+                    spec = SLHDSAParameterSpec.slh_dsa_shake_192s;
+                    break;
+                case "shake-192f":
+                    spec = SLHDSAParameterSpec.slh_dsa_shake_192f;
+                    break;
+                case "shake-256s":
+                    spec = SLHDSAParameterSpec.slh_dsa_shake_256s;
+                    break;
+                case "shake-256f":
+                    spec = SLHDSAParameterSpec.slh_dsa_shake_256f;
+                    break;
                 default:
-                    throw new IllegalArgumentException("Invalid SLH-DSA security level " + level + ". Choose 128, 192 or 256.");
+                    throw new IllegalArgumentException("Invalid SLH-DSA parameter " + level
+                        + ". SHA2 variants: 128s, 128f, 192s, 192f, 256s, 256f."
+                        + " SHAKE variants: shake-128s, shake-128f, shake-192s, shake-192f, shake-256s, shake-256f.");
             }
 
             keyPairGenerator.initialize(spec, new SecureRandom());

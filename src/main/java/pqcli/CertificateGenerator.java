@@ -44,6 +44,16 @@ public class CertificateGenerator implements Callable<Integer> {
     @Option(names = { "-subj", "-subject" }, description = "Certificate subject in OpenSSL format", required = false, defaultValue = "CN=PQCLI Test Certificate, C=DE")
     private String subject;
 
+    @Option(names = { "-out", "-o" }, description = "Output filename prefix (e.g. 'rsa3072' → rsa3072_certificate.pem)", defaultValue = "")
+    private String outPrefix;
+
+    @Option(names = "--timing", description = "Print key generation and certificate signing timing", defaultValue = "false")
+    private boolean printTiming;
+
+    private String prefixed(String name) {
+        return outPrefix.isEmpty() ? name : outPrefix + "_" + name;
+    }
+
 	//public static void main(String[] args) {
     public Integer call() throws Exception {
         ProviderSetup.setupProvider();
@@ -63,7 +73,10 @@ public class CertificateGenerator implements Callable<Integer> {
             AlgorithmSet algorithmSet = new AlgorithmSet(keyAlgorithm);
 
             // Generate key pair(s) for the public key(s) of the certificate
+            long t0 = System.currentTimeMillis();
             KeyPair keyPair = KeyGenerator.generateKeyPair(algorithmSet.getAlgorithms());
+            long keyGenMs = System.currentTimeMillis() - t0;
+
             KeyPair altKeyPair = null;
             if (algorithmSet.isHybrid()) {
                 altKeyPair = KeyGenerator.generateKeyPair(algorithmSet.getAltAlgorithms());
@@ -88,22 +101,28 @@ public class CertificateGenerator implements Callable<Integer> {
             }
 
             // Create X.509 certificate
+            long t1 = System.currentTimeMillis();
             X509Certificate certificate;
             certificate = generateCertificate(signatureAlgorithmSet, signatureKeyPair, altSignatureKeyPair, subject, validityDaysD);
+            long certGenMs = System.currentTimeMillis() - t1;
 
             // Save certificate and key(s) to files
-            KeyGenerator.saveKeyToFile("private_key.pem", keyPair.getPrivate());
-            KeyGenerator.saveKeyToFile("public_key.pem", keyPair.getPublic());
+            KeyGenerator.saveKeyToFile(prefixed("private_key.pem"), keyPair.getPrivate());
+            KeyGenerator.saveKeyToFile(prefixed("public_key.pem"), keyPair.getPublic());
             if (algorithmSet.isHybrid()) {
-                KeyGenerator.saveKeyToFile("alt_private_key.pem", altKeyPair.getPrivate());
-                KeyGenerator.saveKeyToFile("alt_public_key.pem", altKeyPair.getPublic());
+                KeyGenerator.saveKeyToFile(prefixed("alt_private_key.pem"), altKeyPair.getPrivate());
+                KeyGenerator.saveKeyToFile(prefixed("alt_public_key.pem"), altKeyPair.getPublic());
             }
-            saveCertificateToFile("certificate.pem", certificate);
+            saveCertificateToFile(prefixed("certificate.pem"), certificate);
 
             System.out.println("Certificate and key saved successfully!");
             System.out.println("  Subject:    " + certificate.getSubjectX500Principal().getName());
             System.out.println("  Algorithm:  " + certificate.getSigAlgName());
             System.out.println("  Valid until:" + certificate.getNotAfter());
+            if (printTiming) {
+                System.out.println("  Key gen time:  " + keyGenMs + " ms");
+                System.out.println("  Cert gen time: " + certGenMs + " ms");
+            }
             System.out.println();
             System.out.println(certificate);
 
@@ -162,6 +181,9 @@ public class CertificateGenerator implements Callable<Integer> {
         } else if (name.contains("mldsa")) {
             return "ML-DSA-" + params;
         } else if (name.contains("slh-dsa")) {
+            if (params.startsWith("shake-")) {
+                return "SLH-DSA-SHAKE-" + params.substring(6);
+            }
             return "SLH-DSA-SHA2-" + params;
         } else if (name.contains("dsa")) { // ensure DSA is last as to not match ML-DSA or ECDSA etc.
             return "SHA256withDSA";
