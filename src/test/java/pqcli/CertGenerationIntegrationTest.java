@@ -49,6 +49,27 @@ public class CertGenerationIntegrationTest {
         assertNotNull(cert.getPublicKey().getEncoded());
     }
 
+    @Test
+    public void slhDsaShake128sCertIsValid() throws Exception {
+        X509Certificate cert = makeCert("SLH-DSA:shake-128s", "/CN=TestSHAKE128s");
+        assertEquals("CN=TestSHAKE128s", cert.getSubjectX500Principal().getName());
+        assertNotNull(cert.getPublicKey().getEncoded());
+    }
+
+    @Test
+    public void slhDsaShake128fCertIsValid() throws Exception {
+        X509Certificate cert = makeCert("SLH-DSA:shake-128f", "/CN=TestSHAKE128f");
+        assertEquals("CN=TestSHAKE128f", cert.getSubjectX500Principal().getName());
+        assertNotNull(cert.getPublicKey().getEncoded());
+    }
+
+    @Test
+    public void slhDsaShake256sCertIsValid() throws Exception {
+        X509Certificate cert = makeCert("SLH-DSA:shake-256s", "/CN=TestSHAKE256s");
+        assertEquals("CN=TestSHAKE256s", cert.getSubjectX500Principal().getName());
+        assertNotNull(cert.getPublicKey().getEncoded());
+    }
+
     // --- Hybrid cert ---
 
     @Test
