@@ -50,7 +50,7 @@ public class AlgorithmWithParameters {
             case "sphincsplus":
                 return "slh-dsa";
             default:
-                System.out.println("Warning: Unrecognized algorithm: " + algo);
+                System.err.println("Warning: Unrecognized algorithm: " + algo);
                 return algo;
         }
     }
