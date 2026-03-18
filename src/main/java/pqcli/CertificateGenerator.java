@@ -104,6 +104,8 @@ public class CertificateGenerator implements Callable<Integer> {
             System.out.println("  Subject:    " + certificate.getSubjectX500Principal().getName());
             System.out.println("  Algorithm:  " + certificate.getSigAlgName());
             System.out.println("  Valid until:" + certificate.getNotAfter());
+            System.out.println();
+            System.out.println(certificate);
 
         } catch (Exception e) {
             System.err.println("Error during certificate generation: " + e.getMessage());

@@ -40,14 +40,24 @@ public class KeyGenerator implements Callable<Integer> {
             saveKeyToFile("private_key.pem", keyPair.getPrivate());
             saveKeyToFile("public_key.pem", keyPair.getPublic());
             System.out.println("Key pair saved successfully!");
-            System.out.println("  Algorithm:  " + keyPair.getPublic().getAlgorithm());
+            System.out.println("  Algorithm:    " + keyPair.getPublic().getAlgorithm());
+            System.out.println("  Public key:   " + keyPair.getPublic().getClass().getSimpleName()
+                    + " (" + keyPair.getPublic().getEncoded().length + " bytes encoded)");
+            System.out.println("  Private key:  " + keyPair.getPrivate().getClass().getSimpleName()
+                    + " (" + keyPair.getPrivate().getEncoded().length + " bytes encoded)");
+            System.out.println(keyPair);
 
             if (algorithmSet.isHybrid()) {
                 KeyPair altKeyPair = generateKeyPair(algorithmSet.getAltAlgorithms());
                 saveKeyToFile("alt_private_key.pem", altKeyPair.getPrivate());
                 saveKeyToFile("alt_public_key.pem", altKeyPair.getPublic());
-                System.out.println(altKeyPair);
                 System.out.println("Alternative key pair saved successfully!");
+                System.out.println("  Algorithm:    " + altKeyPair.getPublic().getAlgorithm());
+                System.out.println("  Public key:   " + altKeyPair.getPublic().getClass().getSimpleName()
+                        + " (" + altKeyPair.getPublic().getEncoded().length + " bytes encoded)");
+                System.out.println("  Private key:  " + altKeyPair.getPrivate().getClass().getSimpleName()
+                        + " (" + altKeyPair.getPrivate().getEncoded().length + " bytes encoded)");
+                System.out.println(altKeyPair);
             }
 
             return 0;
