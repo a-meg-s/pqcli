@@ -6,7 +6,10 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.junit.Test;
+import picocli.CommandLine;
 
+import java.io.PrintStream;
+import java.io.ByteArrayOutputStream;
 import java.security.KeyPair;
 
 import static org.junit.Assert.*;
@@ -40,6 +43,22 @@ public class CsrCommandTest {
                 .getPublicKey(csr.getSubjectPublicKeyInfo())
                 .getAlgorithm()
                 .startsWith("ML-DSA"));
+    }
+
+    @Test
+    public void compositeKeyIsRejectedCleanly() {
+        ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
+        PrintStream savedErr = System.err;
+        System.setErr(new PrintStream(errBuf));
+        try {
+            int exit = new CommandLine(new CSRCommand())
+                .execute("-newkey", "RSA:3072_ML-DSA:65", "-subj", "/CN=BadComposite");
+            assertEquals("Expected non-zero exit for composite key", 1, exit);
+            String errMsg = errBuf.toString();
+            assertTrue("Expected composite rejection message", errMsg.contains("Composite keys are not supported"));
+        } finally {
+            System.setErr(savedErr);
+        }
     }
 
     // --- Helper ---

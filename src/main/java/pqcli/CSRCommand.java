@@ -49,6 +49,11 @@ public class CSRCommand implements Callable<Integer> {
                         " PKCS#10 has no standard alt-key extension. Use a single algorithm.");
                 return 1;
             }
+            if (algorithmSet.isComposite()) {
+                System.err.println("Error: Composite keys are not supported for CSR generation." +
+                        " PKCS#10 requires a single supported signing algorithm. Use a single algorithm.");
+                return 1;
+            }
 
             String x500Subject = subject.replace('/', ',').replaceAll("^,", "");
 
