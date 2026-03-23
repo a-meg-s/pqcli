@@ -70,6 +70,34 @@ public class CertGenerationIntegrationTest {
         assertNotNull(cert.getPublicKey().getEncoded());
     }
 
+    @Test
+    public void singleEcCertIsValid() throws Exception {
+        X509Certificate cert = makeCert("EC:secp256r1", "/CN=TestEC");
+        assertEquals("CN=TestEC", cert.getSubjectX500Principal().getName());
+        assertEquals("EC", cert.getPublicKey().getAlgorithm());
+    }
+
+    @Test
+    public void singleEd25519CertIsValid() throws Exception {
+        X509Certificate cert = makeCert("Ed25519", "/CN=TestEd25519");
+        assertEquals("CN=TestEd25519", cert.getSubjectX500Principal().getName());
+        assertEquals("Ed25519", cert.getPublicKey().getAlgorithm());
+    }
+
+    @Test
+    public void singleDsaCertIsValid() throws Exception {
+        X509Certificate cert = makeCert("DSA:2048", "/CN=TestDSA");
+        assertEquals("CN=TestDSA", cert.getSubjectX500Principal().getName());
+        assertEquals("DSA", cert.getPublicKey().getAlgorithm());
+    }
+
+    @Test
+    public void singleEd448CertIsValid() throws Exception {
+        X509Certificate cert = makeCert("Ed448", "/CN=TestEd448");
+        assertEquals("CN=TestEd448", cert.getSubjectX500Principal().getName());
+        assertEquals("Ed448", cert.getPublicKey().getAlgorithm());
+    }
+
     // --- Hybrid cert ---
 
     @Test
