@@ -15,7 +15,8 @@ import picocli.CommandLine.Command;
         KeyGenerator.class,
         ViewCommand.class,
         VerifyCommand.class,
-        CSRCommand.class
+        CSRCommand.class,
+        SignCommand.class
     })
 public class PqCliCommand implements Callable<Integer> {
     @Override
