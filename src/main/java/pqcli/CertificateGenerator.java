@@ -252,7 +252,7 @@ public class CertificateGenerator implements Callable<Integer> {
         return generateCertificate(algorithmSet, keyPair, null, subject, validityDays);
     }
 
-    private static ContentSigner getSigner(AlgorithmWithParameters[] algos, KeyPair signingPair)
+    static ContentSigner getSigner(AlgorithmWithParameters[] algos, KeyPair signingPair)
             throws OperatorCreationException {
         if (algos == null || algos.length == 0) {
             throw new IllegalArgumentException("No signature algorithm specified");
