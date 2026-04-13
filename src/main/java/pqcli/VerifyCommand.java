@@ -32,9 +32,11 @@ public class VerifyCommand implements Callable<Integer> {
         try {
             X509Certificate cert = ViewCommand.loadCertificate(certFile);
 
+            // Keep caCert accessible for alt-key extraction later
+            X509Certificate caCert = null;
             java.security.PublicKey verifyKey;
             if (caFile != null) {
-                X509Certificate caCert = ViewCommand.loadCertificate(caFile);
+                caCert = ViewCommand.loadCertificate(caFile);
                 verifyKey = caCert.getPublicKey();
             } else {
                 verifyKey = cert.getPublicKey();
@@ -79,8 +81,26 @@ public class VerifyCommand implements Callable<Integer> {
                 String altAlgoOid  = altSigAlgoExt.getAlgorithm().getAlgorithm().getId();
                 String altAlgoName = ViewCommand.oidToName(altAlgoOid);  // falls back to OID if unknown
 
+                // For chain verification: the AltSignatureValue is produced by the issuer's alt private key,
+                // so verification must use the issuer's alt public key (from the CA cert's
+                // SubjectAltPublicKeyInfo extension), not the subject cert's own SubjectAltPublicKeyInfo.
+                // For self-signed certs (no -CAfile), the subject IS the issuer, so the cert's own
+                // SubjectAltPublicKeyInfo is correct.
+                java.security.PublicKey altVerifyKey = altPublicKey; // default: self-signed
+                if (caCert != null) {
+                    X509CertificateHolder caHolder = new X509CertificateHolder(caCert.getEncoded());
+                    SubjectAltPublicKeyInfo caAltKeyInfo = SubjectAltPublicKeyInfo.fromExtensions(
+                            caHolder.getExtensions());
+                    if (caAltKeyInfo != null) {
+                        SubjectPublicKeyInfo caAltSpki = SubjectPublicKeyInfo.getInstance(
+                                caAltKeyInfo.toASN1Primitive());
+                        altVerifyKey = new JcaPEMKeyConverter().setProvider("BC")
+                                .getPublicKey(caAltSpki);
+                    }
+                }
+
                 ContentVerifierProvider altProvider = new JcaContentVerifierProviderBuilder()
-                        .setProvider("BC").build(altPublicKey);
+                        .setProvider("BC").build(altVerifyKey);
 
                 boolean altValid;
                 try {
@@ -94,7 +114,8 @@ public class VerifyCommand implements Callable<Integer> {
                     return 1;
                 }
                 System.out.println("Alt Signature:     OK");
-                System.out.println("  Alt Pub Key:  " + altPublicKey.getAlgorithm());
+                System.out.println("  Alt Pub Key:  " + altPublicKey.getAlgorithm() +
+                        (caCert != null ? " (subject) / verified via CA cert alt key" : ""));
                 System.out.println("  Alt Sig Alg:  " + altAlgoName + "  (OID: " + altAlgoOid + ")");
                 System.out.println("  NOTE: Verified using BC-specific public API, not JCA.");
                 System.out.println("        Hybrid alt-signature handling is non-standard X.509 behavior.");
