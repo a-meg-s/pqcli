@@ -222,7 +222,7 @@ public class ViewCommand implements Callable<Integer> {
         }
     }
 
-    private static X509Certificate loadCertificate(String pemFilePath) throws Exception {
+    static X509Certificate loadCertificate(String pemFilePath) throws Exception {
         List<String> lines = Files.readAllLines(Paths.get(pemFilePath));
 
         if (lines.get(0).contains("KEY---")) {
