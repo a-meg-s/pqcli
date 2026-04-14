@@ -87,23 +87,10 @@ public class CertificateGenerator implements Callable<Integer> {
                 altKeyPair = KeyGenerator.generateKeyPair(algorithmSet.getAltAlgorithms());
             }
 
-            boolean isSelfSigned = true; // TODO: Only if -ca is not set
-
-            // Generate signing key pair
-            // TODO: The signing key should be importable via the -cakey option
-            KeyPair signatureKeyPair, altSignatureKeyPair = null;
+            // Always self-signed. -sig is reserved for a future non-self-signed path but has no effect currently.
+            KeyPair signatureKeyPair = keyPair;
+            KeyPair altSignatureKeyPair = algorithmSet.isHybrid() ? altKeyPair : null;
             AlgorithmSet signatureAlgorithmSet = algorithmSet;
-            if (isSelfSigned) {
-                //signatureAlgorithm = getKeyAlgorithmForSignature(algorithmType);
-                signatureKeyPair = keyPair;
-                if (algorithmSet.isHybrid()) altSignatureKeyPair = altKeyPair;
-            } else {
-                signatureAlgorithmSet = new AlgorithmSet(signatureAlgorithm);
-                signatureKeyPair = KeyGenerator.generateKeyPair(signatureAlgorithmSet.getAlgorithms());
-                if (signatureAlgorithmSet.isHybrid()) {
-                    altSignatureKeyPair = KeyGenerator.generateKeyPair(signatureAlgorithmSet.getAltAlgorithms());
-                }
-            }
 
             // Create X.509 certificate
             long t1 = System.currentTimeMillis();
@@ -229,7 +216,7 @@ public class CertificateGenerator implements Callable<Integer> {
 
         /* Extensions */
         certBuilder.addExtension(org.bouncycastle.asn1.x509.Extension.basicConstraints, true, new BasicConstraints(true));
-        certBuilder.addExtension(org.bouncycastle.asn1.x509.Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature | KeyUsage.keyEncipherment));
+        certBuilder.addExtension(org.bouncycastle.asn1.x509.Extension.keyUsage, true, new KeyUsage(KeyUsage.keyCertSign | KeyUsage.cRLSign));
 
         /* Signing */
         ContentSigner contentSigner = getSigner(algorithmSet.getAlgorithms(), keyPair);
