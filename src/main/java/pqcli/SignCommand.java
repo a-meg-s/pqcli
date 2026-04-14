@@ -4,7 +4,9 @@ import org.bouncycastle.asn1.pkcs.Attribute;
 import org.bouncycastle.asn1.pkcs.CertificationRequest;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.AltSignatureAlgorithm;
+import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.KeyUsage;
 import org.bouncycastle.asn1.x509.Extensions;
 import org.bouncycastle.asn1.x509.SubjectAltPublicKeyInfo;
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
@@ -97,6 +99,9 @@ public class SignCommand implements Callable<Integer> {
                     issuer, BigInteger.valueOf(System.currentTimeMillis()),
                     notBefore, notAfter, subject,
                     new JcaPEMKeyConverter().setProvider("BC").getPublicKey(csr.getSubjectPublicKeyInfo()));
+            // End-entity extensions — applied to both hybrid and non-hybrid paths.
+            certBuilder.addExtension(Extension.basicConstraints, true, new BasicConstraints(false));
+            certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature));
             ContentSigner primarySigner = new JcaContentSignerBuilder(sigAlgo)
                     .setProvider("BC").build(caPrivateKey);
 
