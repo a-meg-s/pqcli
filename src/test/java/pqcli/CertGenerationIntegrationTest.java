@@ -154,6 +154,30 @@ public class CertGenerationIntegrationTest {
         assertEquals(unknown, ViewCommand.oidToName(unknown));
     }
 
+    // --- KeyUsage / extension tests ---
+
+    @Test
+    public void selfSignedCertKeyUsageIsCaAppropriate() throws Exception {
+        X509Certificate cert = makeCert("RSA:3072", "/CN=TestCA-KU");
+        // BasicConstraints CA:true
+        assertTrue("Expected CA cert (BasicConstraints pathLen >= 0)", cert.getBasicConstraints() >= 0);
+        boolean[] ku = cert.getKeyUsage();
+        assertNotNull("KeyUsage extension must be present", ku);
+        // [5] = keyCertSign, [6] = cRLSign
+        assertTrue("keyCertSign must be set",  ku[5]);
+        assertTrue("cRLSign must be set",       ku[6]);
+        // [2] = keyEncipherment — must NOT be present for a CA signing cert
+        assertFalse("keyEncipherment must not be set", ku[2]);
+    }
+
+    @Test
+    public void compositeSelfSignedCertVerifies() throws Exception {
+        X509Certificate cert = makeCert("RSA:3072_ML-DSA:65", "/CN=CompositeVerify");
+        assertTrue("Expected CompositePublicKey", cert.getPublicKey() instanceof CompositePublicKey);
+        // primary signature must verify using the composite public key (no exception = pass)
+        cert.verify(cert.getPublicKey(), "BC");
+    }
+
     // --- Helpers ---
 
     private static X509Certificate makeCert(String keyAlgo, String subject) throws Exception {

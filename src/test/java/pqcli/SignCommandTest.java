@@ -345,6 +345,67 @@ public class SignCommandTest {
                 err.contains("alt") || err.contains("alternative") || err.contains("proof"));
     }
 
+    // === Issued cert extension tests ===
+
+    @Test
+    public void issuedCertHasBasicConstraintsCaFalse() throws Exception {
+        // hybridIssuedCert is built via @BeforeClass (full CLI path, hybrid branch).
+        // compositeSubjectCertIssuedCorrectly covers the non-hybrid CLI branch.
+        assertEquals("Hybrid-issued cert must have BasicConstraints CA:false",
+                -1, hybridIssuedCert.getBasicConstraints());
+    }
+
+    @Test
+    public void issuedCertHasDigitalSignatureKeyUsage() throws Exception {
+        // hybridIssuedCert is built via @BeforeClass (full CLI path, hybrid branch).
+        // compositeSubjectCertIssuedCorrectly covers the non-hybrid CLI branch.
+        boolean[] ku = hybridIssuedCert.getKeyUsage();
+        assertNotNull("Hybrid-issued cert must have KeyUsage extension", ku);
+        assertTrue("KeyUsage[0] digitalSignature must be set",  ku[0]);
+        assertFalse("KeyUsage[2] keyEncipherment must not be set", ku[2]);
+    }
+
+    @Test
+    public void compositeSubjectCertIssuedCorrectly() throws Exception {
+        // CA: RSA:3072 self-signed
+        AlgorithmSet caAlgo = new AlgorithmSet("RSA:3072");
+        KeyPair caKeyPair = KeyGenerator.generateKeyPair(caAlgo.getAlgorithms());
+        X509Certificate caCert = makeSelfSignedCaWithKey("CN=CompositeTestCA", caKeyPair);
+
+        // Composite EE CSR: RSA:3072_ML-DSA:65
+        PKCS10CertificationRequest csr = makeCompositeCsr("CN=CompositeEE");
+
+        // Sign via SignCommand CLI
+        File caCertFile = writeCertFile(caCert);
+        File caKeyFile  = writeKeyFile(caKeyPair.getPrivate());
+        File csrFile    = writeCsrFile(csr);
+        File outDir     = java.nio.file.Files.createTempDirectory("pqcli_comp_sign").toFile();
+
+        int exitCode = new CommandLine(new SignCommand()).execute(
+            "-csr",    csrFile.getAbsolutePath(),
+            "-CAcert", caCertFile.getAbsolutePath(),
+            "-CAkey",  caKeyFile.getAbsolutePath(),
+            "-out",    new File(outDir, "comp").getAbsolutePath()
+        );
+        assertEquals("Composite CSR signing must succeed", 0, exitCode);
+
+        X509Certificate issued = ViewCommand.loadCertificate(
+                new File(outDir, "comp_certificate.pem").getAbsolutePath());
+
+        // Verify issued cert against CA
+        issued.verify(caCert.getPublicKey(), "BC"); // no exception = pass
+
+        // Public key in issued cert must be the composite public key
+        assertTrue("Issued cert must contain a CompositePublicKey",
+                issued.getPublicKey() instanceof org.bouncycastle.jcajce.CompositePublicKey);
+
+        // Extension checks (Fix 2 must apply to composite path too)
+        assertEquals("Issued cert must have BasicConstraints CA:false", -1, issued.getBasicConstraints());
+        boolean[] ku = issued.getKeyUsage();
+        assertNotNull("Issued cert must have KeyUsage extension", ku);
+        assertTrue("KeyUsage digitalSignature must be set", ku[0]);
+    }
+
     // --- Legacy helpers (preserved from original test class) ---
 
     @Test
@@ -464,6 +525,18 @@ public class SignCommandTest {
                 .build(caKeyPair.getPrivate());
         return new JcaX509CertificateConverter().setProvider("BC")
                 .getCertificate(builder.build(signer));
+    }
+
+    /**
+     * Build a composite (RSA:3072_ML-DSA:65) PKCS#10 CSR.
+     * Uses CertificateGenerator.getSigner() which handles CompositePrivateKey correctly.
+     */
+    private static PKCS10CertificationRequest makeCompositeCsr(String subject) throws Exception {
+        AlgorithmSet algoSet = new AlgorithmSet("RSA:3072_ML-DSA:65");
+        KeyPair kp = KeyGenerator.generateKeyPair(algoSet.getAlgorithms());
+        ContentSigner signer = CertificateGenerator.getSigner(algoSet.getAlgorithms(), kp);
+        return new JcaPKCS10CertificationRequestBuilder(new X500Name(subject), kp.getPublic())
+                .build(signer);
     }
 
     // --- File I/O helpers ---
