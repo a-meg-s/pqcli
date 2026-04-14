@@ -19,7 +19,7 @@ public class ProviderSetup {
                 System.err.println("Error: BCPQC Provider not available!");
                 return 1;
             }
-            System.out.println("Successfully loaded BCPQC provider: " + provider.getInfo());
+            System.err.println("Successfully loaded BCPQC provider: " + provider.getInfo());
         }
         catch (Exception e) {
             System.err.println("Error during provider initialization: " + e.getMessage());
