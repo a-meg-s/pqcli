@@ -64,6 +64,58 @@ public class AlgorithmSetTest {
         assertEquals(2, s.getAltAlgorithms().length);
     }
 
+    // --- resolveNamedComposite ---
+
+    @Test
+    public void resolveNamedCompositeRsaMlDsa65() {
+        AlgorithmWithParameters[] algos = new AlgorithmSet("RSA:3072_ML-DSA:65").getAlgorithms();
+        assertEquals("MLDSA65-RSA3072-PSS-SHA512", AlgorithmSet.resolveNamedComposite(algos));
+    }
+
+    @Test
+    public void resolveNamedCompositeOrderIndependent() {
+        // ML-DSA first
+        AlgorithmWithParameters[] a = new AlgorithmSet("ML-DSA:65_RSA:3072").getAlgorithms();
+        // RSA first
+        AlgorithmWithParameters[] b = new AlgorithmSet("RSA:3072_ML-DSA:65").getAlgorithms();
+        assertEquals(AlgorithmSet.resolveNamedComposite(a), AlgorithmSet.resolveNamedComposite(b));
+    }
+
+    @Test
+    public void resolveNamedCompositeStripsPssSuffix() {
+        // RSA:3072-pss should resolve the same as RSA:3072 (PSS is always used for composite RSA)
+        AlgorithmWithParameters[] a = new AlgorithmSet("RSA:3072-pss_ML-DSA:65").getAlgorithms();
+        AlgorithmWithParameters[] b = new AlgorithmSet("RSA:3072_ML-DSA:65").getAlgorithms();
+        assertEquals(AlgorithmSet.resolveNamedComposite(b), AlgorithmSet.resolveNamedComposite(a));
+    }
+
+    @Test
+    public void resolveNamedCompositeWithDefaultMlDsaParam() {
+        // ML-DSA without explicit level defaults to 65
+        AlgorithmWithParameters[] algos = new AlgorithmSet("ML-DSA_RSA:3072").getAlgorithms();
+        assertEquals("MLDSA65-RSA3072-PSS-SHA512", AlgorithmSet.resolveNamedComposite(algos));
+    }
+
+    @Test
+    public void resolveNamedCompositeEcVariants() {
+        assertEquals("MLDSA65-ECDSA-P256-SHA512",
+            AlgorithmSet.resolveNamedComposite(new AlgorithmSet("EC:secp256r1_ML-DSA:65").getAlgorithms()));
+        assertEquals("MLDSA65-ECDSA-P384-SHA512",
+            AlgorithmSet.resolveNamedComposite(new AlgorithmSet("EC:P-384_ML-DSA:65").getAlgorithms()));
+        assertEquals("MLDSA87-Ed448-SHAKE256",
+            AlgorithmSet.resolveNamedComposite(new AlgorithmSet("Ed448_ML-DSA:87").getAlgorithms()));
+    }
+
+    @Test
+    public void resolveNamedCompositeReturnsNullForUnsupported() {
+        // SLH-DSA has no named draft combination
+        assertNull(AlgorithmSet.resolveNamedComposite(new AlgorithmSet("SLH-DSA:128s_ML-DSA:65").getAlgorithms()));
+        // 3-component composites not supported
+        assertNull(AlgorithmSet.resolveNamedComposite(new AlgorithmSet("RSA:3072_ML-DSA:65_EC").getAlgorithms()));
+        // Two non-ML-DSA components
+        assertNull(AlgorithmSet.resolveNamedComposite(new AlgorithmSet("RSA:3072_EC").getAlgorithms()));
+    }
+
     // --- Error cases ---
 
     @Test(expected = IllegalArgumentException.class)
