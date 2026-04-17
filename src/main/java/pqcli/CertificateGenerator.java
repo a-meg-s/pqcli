@@ -9,7 +9,6 @@ import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jcajce.CompositePrivateKey;
-import org.bouncycastle.jcajce.spec.CompositeAlgorithmSpec;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
@@ -248,20 +247,18 @@ public class CertificateGenerator implements Callable<Integer> {
             String sigAlgo = getSuitableSignatureAlgorithm(algos[0]);
             return new JcaContentSignerBuilder(sigAlgo).setProvider("BC").build(signingPair.getPrivate());
         }
-        // length > 1: composite signature
+        // length > 1: composite signature — use named-combination path.
+        // BC 1.84 named signer emits PKIX-arc OIDs (1.3.6.1.5.5.7.6.*) for supported combos.
+        String namedCombo = AlgorithmSet.resolveNamedComposite(algos);
+        if (namedCombo == null) {
+            throw new IllegalArgumentException(
+                "Unsupported composite combination for signing. " +
+                "Only draft-ietf-lamps-pq-composite-sigs named combinations are supported.");
+        }
         if (!(signingPair.getPrivate() instanceof CompositePrivateKey)) {
-            throw new IllegalArgumentException("Composite signature algorithm requires a CompositePrivateKey");
+            throw new IllegalArgumentException("Composite signing requires a CompositePrivateKey");
         }
-        CompositePrivateKey compPrivKey = (CompositePrivateKey)signingPair.getPrivate();
-
-        CompositeAlgorithmSpec.Builder builder = new CompositeAlgorithmSpec.Builder();
-        for (AlgorithmWithParameters algo : algos) {
-            String sigAlgo = getSuitableSignatureAlgorithm(algo);
-            builder.add(sigAlgo);
-        }
-        CompositeAlgorithmSpec compAlgSpec = builder.build();
-
-        return new JcaContentSignerBuilder("Composite", compAlgSpec).setProvider("BC").build(compPrivKey);
+        return new JcaContentSignerBuilder(namedCombo).setProvider("BC").build(signingPair.getPrivate());
     }
 
     static void saveCertificateToFile(String fileName, X509Certificate certificate) throws IOException, CertificateEncodingException {

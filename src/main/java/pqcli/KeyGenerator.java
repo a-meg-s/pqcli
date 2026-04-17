@@ -17,8 +17,6 @@ import java.security.spec.NamedParameterSpec;
 import java.util.Base64;
 import java.util.concurrent.Callable;
 
-import org.bouncycastle.jcajce.CompositePrivateKey;
-import org.bouncycastle.jcajce.CompositePublicKey;
 import org.bouncycastle.jcajce.spec.MLDSAParameterSpec;
 import org.bouncycastle.pqc.jcajce.spec.DilithiumParameterSpec;
 import org.bouncycastle.jcajce.spec.SLHDSAParameterSpec;
@@ -98,21 +96,18 @@ public class KeyGenerator implements Callable<Integer> {
         if (algorithms.length == 1) {
             return generateKeyPair(algorithms[0]);
         }
-        // else: composite key
-        KeyPair[] keyPairs = new KeyPair[algorithms.length];
-        PrivateKey[] privateKeys = new PrivateKey[algorithms.length];
-        PublicKey[] publicKeys = new PublicKey[algorithms.length];
-        for (int i = 0; i < algorithms.length; i++) {
-            keyPairs[i] = generateKeyPair(algorithms[i]);
-            privateKeys[i] = keyPairs[i].getPrivate();
-            publicKeys[i] = keyPairs[i].getPublic();
+        // Composite key: use named-combination path (draft-ietf-lamps-pq-composite-sigs aligned).
+        // BC 1.84 named composite KPG emits PKIX-arc OIDs (1.3.6.1.5.5.7.6.*) for supported combos.
+        // Unsupported combinations throw rather than falling back to legacy generic OIDs.
+        String namedCombo = AlgorithmSet.resolveNamedComposite(algorithms);
+        if (namedCombo == null) {
+            throw new IllegalArgumentException(
+                "Unsupported composite combination. Only draft-ietf-lamps-pq-composite-sigs " +
+                "named combinations are supported (ML-DSA 44/65/87 with RSA/ECDSA/EdDSA per draft). " +
+                "Examples: ML-DSA:65_RSA:3072, ML-DSA:65_EC:secp256r1, ML-DSA:87_Ed448.");
         }
-
-        // TODO: move to CompositePrivateKey(ASN1ObjectIdentifier algorithmIdentifier, PrivateKey... keys) constructor
-        // for the algorithms that have individual OIDs assigned
-        CompositePrivateKey compPrivKey = new CompositePrivateKey(privateKeys);
-        CompositePublicKey compPubKey = new CompositePublicKey(publicKeys);
-        return new KeyPair(compPubKey, compPrivKey);
+        KeyPairGenerator namedKpg = KeyPairGenerator.getInstance(namedCombo, "BC");
+        return namedKpg.generateKeyPair();
     }
 
     public static KeyPair generateKeyPair(AlgorithmWithParameters algorithm) 

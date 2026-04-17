@@ -109,8 +109,8 @@ public class CSRCommand implements Callable<Integer> {
             } else if (algorithmSet.isComposite()) {
                 System.out.println("  Type:       Composite CSR");
                 System.out.println("  Files:      " + prefixed("csr.pem") + ", " + prefixed("private_key.pem"));
-                System.out.println("  NOTE: Composite algorithm identifiers are draft/BC-internal.");
-                System.out.println("        Non-BC tooling may not understand this CSR.");
+                System.out.println("  NOTE: Uses draft-ietf-lamps-pq-composite-sigs named-combination OIDs");
+                System.out.println("        (PKIX arc 1.3.6.1.5.5.7.6.*). Draft, not yet RFC.");
             } else {
                 System.out.println("  Algorithm:  " + CertificateGenerator.getSuitableSignatureAlgorithm(algorithmSet.getAlgorithms()[0]));
                 System.out.println("  Files:      " + prefixed("csr.pem") + ", " + prefixed("private_key.pem"));

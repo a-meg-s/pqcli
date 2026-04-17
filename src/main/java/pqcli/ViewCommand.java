@@ -206,12 +206,29 @@ public class ViewCommand implements Callable<Integer> {
             case "2.16.840.1.101.3.4.3.29": return "SLH-DSA-SHAKE-192f";
             case "2.16.840.1.101.3.4.3.30": return "SLH-DSA-SHAKE-256s";
             case "2.16.840.1.101.3.4.3.31": return "SLH-DSA-SHAKE-256f";
-            // Composite — legacy BC/generic composite draft-era OIDs emitted by BC 1.80 generic composite.
-            // These are NOT the named-combination OIDs from the active IETF composite-signatures draft
-            // (draft-ietf-lamps-pq-composite-sigs), which uses the PKIX arc 1.3.6.1.5.5.7.6.*.
-            // Before migrating to named composite OIDs, re-verify against the current draft and BC behavior.
-            case "1.3.6.1.4.1.18227.2.1":   return "Composite-Sig (legacy BC/generic composite draft-era OID)";
-            case "2.16.840.1.114027.80.4.1": return "Composite-Sig (legacy BC/generic composite draft-era OID)";
+            // Composite signatures — named-combination OIDs from draft-ietf-lamps-pq-composite-sigs
+            // PKIX arc 1.3.6.1.5.5.7.6.* — OIDs verified against draft-18 and BC 1.84 empirical output (2026-04-17)
+            case "1.3.6.1.5.5.7.6.37": return "MLDSA44-RSA2048-PSS-SHA256";
+            case "1.3.6.1.5.5.7.6.38": return "MLDSA44-RSA2048-PKCS15-SHA256";
+            case "1.3.6.1.5.5.7.6.39": return "MLDSA44-Ed25519-SHA512";
+            case "1.3.6.1.5.5.7.6.40": return "MLDSA44-ECDSA-P256-SHA256";
+            case "1.3.6.1.5.5.7.6.41": return "MLDSA65-RSA3072-PSS-SHA512";
+            case "1.3.6.1.5.5.7.6.42": return "MLDSA65-RSA3072-PKCS15-SHA512";
+            case "1.3.6.1.5.5.7.6.43": return "MLDSA65-RSA4096-PSS-SHA512";
+            case "1.3.6.1.5.5.7.6.44": return "MLDSA65-RSA4096-PKCS15-SHA512";
+            case "1.3.6.1.5.5.7.6.45": return "MLDSA65-ECDSA-P256-SHA512";
+            case "1.3.6.1.5.5.7.6.46": return "MLDSA65-ECDSA-P384-SHA512";
+            case "1.3.6.1.5.5.7.6.47": return "MLDSA65-ECDSA-brainpoolP256r1-SHA512";
+            case "1.3.6.1.5.5.7.6.48": return "MLDSA65-Ed25519-SHA512";
+            case "1.3.6.1.5.5.7.6.49": return "MLDSA87-ECDSA-P384-SHA512";
+            case "1.3.6.1.5.5.7.6.50": return "MLDSA87-ECDSA-brainpoolP384r1-SHA512";
+            case "1.3.6.1.5.5.7.6.51": return "MLDSA87-Ed448-SHAKE256";
+            case "1.3.6.1.5.5.7.6.52": return "MLDSA87-RSA3072-PSS-SHA512";
+            case "1.3.6.1.5.5.7.6.53": return "MLDSA87-RSA4096-PSS-SHA512";
+            case "1.3.6.1.5.5.7.6.54": return "MLDSA87-ECDSA-P521-SHA512";
+            // Legacy BC/generic composite draft-era OIDs (no longer generated; kept for viewing old artifacts)
+            case "1.3.6.1.4.1.18227.2.1":   return "Composite-Sig (legacy BC/generic draft-era OID — not draft-aligned)";
+            case "2.16.840.1.114027.80.4.1": return "Composite-Sig (legacy BC/generic draft-era OID — not draft-aligned)";
             // Standard X.509 extensions
             case "2.5.29.14": return "Subject Key Identifier";
             case "2.5.29.15": return "Key Usage";
