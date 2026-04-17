@@ -71,7 +71,7 @@ sign | Sign a CSR with a CA key to produce a chain-of-trust certificate | ✔️
 view | Display certificate contents in human-readable form | ✔️
 
 #### cert API
-
+(not yet implemented, initial idea)
 Option | Description | Impl.
 --- | --- | ---
 -ca | The certificate of the authority that is included in the issuer field of the certificate. If omitted, the certificate is self-signed. |
