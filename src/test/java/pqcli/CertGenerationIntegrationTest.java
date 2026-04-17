@@ -132,8 +132,39 @@ public class CertGenerationIntegrationTest {
         assertTrue("Expected CompositePublicKey", cert.getPublicKey() instanceof CompositePublicKey);
         CompositePublicKey cpk = (CompositePublicKey) cert.getPublicKey();
         assertEquals(2, cpk.getPublicKeys().size());
-        assertEquals("RSA",    cpk.getPublicKeys().get(0).getAlgorithm());
-        assertTrue("Expected ML-DSA component", cpk.getPublicKeys().get(1).getAlgorithm().startsWith("ML-DSA"));
+        // Named combo MLDSA65-RSA3072-PSS-SHA512 puts ML-DSA first, RSA second
+        assertTrue("Expected ML-DSA first component", cpk.getPublicKeys().get(0).getAlgorithm().startsWith("ML-DSA"));
+        assertEquals("RSA", cpk.getPublicKeys().get(1).getAlgorithm());
+    }
+
+    @Test
+    public void compositeCertEmitsDraftAlignedOid() throws Exception {
+        // BC 1.84 + named-combo path must emit PKIX-arc OID 1.3.6.1.5.5.7.6.41
+        // for MLDSA65-RSA3072-PSS-SHA512, per draft-ietf-lamps-pq-composite-sigs-18
+        X509Certificate cert = makeCert("RSA:3072_ML-DSA:65", "/CN=CompositeOid");
+        String oid = cert.getSigAlgOID();
+        assertEquals("Expected PKIX-arc composite OID 1.3.6.1.5.5.7.6.41 for MLDSA65-RSA3072-PSS-SHA512",
+            "1.3.6.1.5.5.7.6.41", oid);
+    }
+
+    @Test
+    public void compositeOidToNameResolvesNewDraftOids() {
+        // Verify oidToName covers the full PKIX-arc composite OID set
+        assertEquals("MLDSA65-RSA3072-PSS-SHA512",    ViewCommand.oidToName("1.3.6.1.5.5.7.6.41"));
+        assertEquals("MLDSA65-RSA3072-PKCS15-SHA512",  ViewCommand.oidToName("1.3.6.1.5.5.7.6.42"));
+        assertEquals("MLDSA44-RSA2048-PSS-SHA256",     ViewCommand.oidToName("1.3.6.1.5.5.7.6.37"));
+        assertEquals("MLDSA87-Ed448-SHAKE256",         ViewCommand.oidToName("1.3.6.1.5.5.7.6.51"));
+        assertEquals("MLDSA87-RSA4096-PSS-SHA512",     ViewCommand.oidToName("1.3.6.1.5.5.7.6.53"));
+        // Legacy OIDs still recognized for viewing old artifacts
+        assertTrue("Legacy OID should still resolve",
+            ViewCommand.oidToName("1.3.6.1.4.1.18227.2.1").contains("legacy"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void unsupportedCompositeThrows() throws Exception {
+        // A combination not in the draft (SLH-DSA composite) should throw, not silently use legacy OIDs
+        AlgorithmSet algorithmSet = new AlgorithmSet("SLH-DSA:128s_ML-DSA:65");
+        KeyGenerator.generateKeyPair(algorithmSet.getAlgorithms());
     }
 
     // --- ViewCommand oidToName roundtrip ---
