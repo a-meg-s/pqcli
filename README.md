@@ -38,7 +38,7 @@ Generate a self-signed alternate-signature certificate (X.509 alternate-signatur
 java -jar .\target\pqcli-0.1.0.jar cert -newkey RSA:3072,ML-DSA:65
 ```
 
-Generate a self-signed composite certificate with RSA and ML-DSA (experimental; uses legacy BC/generic composite OIDs):
+Generate a self-signed composite certificate with RSA and ML-DSA (draft-ietf-lamps-pq-composite-sigs named-combination; PKIX-arc OID):
 ```
 java -jar .\target\pqcli-0.1.0.jar cert -newkey RSA:3072_ML-DSA:65
 ```
@@ -53,9 +53,9 @@ Examine an existing certificate in PEM format:
 java -jar .\target\pqcli-0.1.0.jar view certificate.pem
 ```
 
-Non-practical example of a hybrid certificate that combines an RSA + ML-DSA composite key with another composite key of ECC, SLH-DSA, Ed448 and RSA again for good measure. Yep, we know...
+Non-practical example of a hybrid certificate combining an RSA+ML-DSA composite primary key with an EC+ML-DSA composite alt key:
 ```
-java -jar .\target\pqcli-0.1.0.jar cert -newkey rsa:4096_mldsa,ec_slhdsa:256f_ed448_rsa:3072
+java -jar .\target\pqcli-0.1.0.jar cert -newkey rsa:3072_mldsa:65,ec:secp384r1_mldsa:87
 ```
 
 ### CLI structure
@@ -97,7 +97,7 @@ ML-DSA | 44, 65, 87 (aliases: 2, 3, 5) | 65
 dilithium-bcpqc | 2, 3, 5 | 3
 SLH-DSA SHA-2 | 128s, 128f, 192s, 192f, 256s, 256f | 192s
 SLH-DSA SHAKE | shake-128s, shake-128f, shake-192s, shake-192f, shake-256s, shake-256f | —
-RSA | 1024-8192 (append `-pss` for using RSASSA-PSS, e.g. `rsa:3072-pss`) | 2048
+RSA | 1024-8192 (append `-pss` for using RSASSA-PSS, e.g. `rsa:3072-pss`) | 3072
 EC | All common named curves, e.g. `secp256r1` | `secp256r1`
 DSA | 1024-4096 | 2048
 Ed25519 | - | -
@@ -111,7 +111,7 @@ It is provided for keypair generation and A/B testing only.
 - **ML-DSA**: FIPS 204 / RFC 9881. OIDs `2.16.840.1.101.3.4.3.17/18/19` are standards-track.
 - **SLH-DSA**: FIPS 205 / RFC 9909. Pure variants only; HashSLH-DSA / HashML-DSA prehash variants are out of scope.
 - **Alternate-signature certificates** (`RSA:3072,ML-DSA:65` syntax): use X.509 alternate-signature extensions (OIDs `2.5.29.72/73/74`) defined in ITU-T X.509 / ISO/IEC 9594-8. Verification uses the BC-specific `isAlternativeSignatureValid()` API. This is distinct from the IETF composite-signatures draft and from RFC 9763 related certificates (multi-cert hybrid); neither of those is implemented.
-- **Composite certificates** (`RSA:3072_ML-DSA:65` syntax): experimental. Currently uses BC-generic composite encoding with legacy draft-era OIDs. Not aligned with the named-combination OIDs in the active IETF composite-signatures draft.
+- **Composite certificates** (`RSA:3072_ML-DSA:65` syntax): experimental (draft, not RFC). Uses BC 1.84 named-combination API, emitting PKIX-arc OIDs (`1.3.6.1.5.5.7.6.*`) per draft-ietf-lamps-pq-composite-sigs-18. Only ML-DSA-based named combinations from the active draft are supported; other composites are rejected. RSA composite defaults to the PSS variant.
 
 ## Acknowledgements
 

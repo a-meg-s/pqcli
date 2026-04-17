@@ -140,7 +140,11 @@ public class AlgorithmSet {
 
         String level = mldsa.keySizeOrCurve;   // "44", "65", or "87"
         String otherAlgo = other.algorithm;
-        String otherParam = other.keySizeOrCurve;
+        // Strip the "-pss" suffix if present: RSA composite always uses the PSS variant
+        // (named draft combos have a fixed scheme; the "-pss" hint from key syntax is redundant)
+        String otherParam = other.keySizeOrCurve.endsWith("-pss")
+                ? other.keySizeOrCurve.substring(0, other.keySizeOrCurve.length() - 4)
+                : other.keySizeOrCurve;
 
         switch (level) {
             case "44":
