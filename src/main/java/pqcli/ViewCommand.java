@@ -206,9 +206,12 @@ public class ViewCommand implements Callable<Integer> {
             case "2.16.840.1.101.3.4.3.29": return "SLH-DSA-SHAKE-192f";
             case "2.16.840.1.101.3.4.3.30": return "SLH-DSA-SHAKE-256s";
             case "2.16.840.1.101.3.4.3.31": return "SLH-DSA-SHAKE-256f";
-            // Composite (draft OIDs used by BC 1.80)
-            case "1.3.6.1.4.1.18227.2.1":   return "Composite-Sig (draft)";
-            case "2.16.840.1.114027.80.4.1": return "Composite-Sig (draft)";
+            // Composite — legacy BC/generic composite draft-era OIDs emitted by BC 1.80 generic composite.
+            // These are NOT the named-combination OIDs from the active IETF composite-signatures draft
+            // (draft-ietf-lamps-pq-composite-sigs), which uses the PKIX arc 1.3.6.1.5.5.7.6.*.
+            // Before migrating to named composite OIDs, re-verify against the current draft and BC behavior.
+            case "1.3.6.1.4.1.18227.2.1":   return "Composite-Sig (legacy BC/generic composite draft-era OID)";
+            case "2.16.840.1.114027.80.4.1": return "Composite-Sig (legacy BC/generic composite draft-era OID)";
             // Standard X.509 extensions
             case "2.5.29.14": return "Subject Key Identifier";
             case "2.5.29.15": return "Key Usage";

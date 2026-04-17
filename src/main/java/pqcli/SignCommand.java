@@ -248,9 +248,11 @@ public class SignCommand implements Callable<Integer> {
             System.out.println("  Sig Alg:    " + sigAlgo);
             if (isHybridIssued) {
                 System.out.println("  Alt Sig Alg: " + altSigAlgoForOutput);
-                System.out.println("  Type:       Hybrid (BC-specific alt extensions 2.5.29.72/73/74)");
-                System.out.println("  NOTE: Hybrid cert encoding based on IETF LAMPS composite signatures Internet-Draft.");
-                System.out.println("        Not standardized; verified with BC-specific API only.");
+                System.out.println("  Type:       Hybrid (X.509 alt-signature extensions 2.5.29.72/73/74)");
+                System.out.println("  NOTE: Alt-signature extensions (OIDs 2.5.29.72/73/74) are defined in");
+                System.out.println("        ITU-T X.509 / ISO/IEC 9594-8 (alternate-signature mechanism).");
+                System.out.println("        Not the same as the composite-signatures IETF draft.");
+                System.out.println("        Verified with BC-specific API only (not portable JCA behavior).");
             }
             System.out.println("  Valid until:" + notAfter);
             System.out.println("  File:       " + prefixed("certificate.pem"));

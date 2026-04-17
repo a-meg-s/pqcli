@@ -51,9 +51,10 @@ public class VerifyCommand implements Callable<Integer> {
 
             // Hybrid alt-signature verification.
             // Uses BC-specific public APIs: X509CertificateHolder.isAlternativeSignatureValid(),
-            // SubjectAltPublicKeyInfo, AltSignatureAlgorithm. These are not part of JCA and not
-            // standardized X.509 behavior. The hybrid cert format (OIDs 2.5.29.72–74) is based on
-            // the IETF LAMPS composite signatures Internet-Draft (not yet an RFC).
+            // SubjectAltPublicKeyInfo, AltSignatureAlgorithm. These are not part of JCA.
+            // OIDs 2.5.29.72/73/74 are the X.509 alternate-signature extension OIDs defined in
+            // ITU-T X.509 / ISO/IEC 9594-8. They are NOT from the IETF composite-signatures draft,
+            // which is a separate mechanism with different algorithm identifiers.
             X509CertificateHolder holder = new X509CertificateHolder(cert.getEncoded());
             Extensions exts = holder.getExtensions();
             boolean hasAltKey   = exts != null && exts.getExtension(Extension.subjectAltPublicKeyInfo) != null;
@@ -118,8 +119,8 @@ public class VerifyCommand implements Callable<Integer> {
                         (caCert != null ? " (subject) / verified via CA cert alt key" : ""));
                 System.out.println("  Alt Sig Alg:  " + altAlgoName + "  (OID: " + altAlgoOid + ")");
                 System.out.println("  NOTE: Verified using BC-specific public API, not JCA.");
-                System.out.println("        Hybrid alt-signature handling is non-standard X.509 behavior.");
-                System.out.println("        Based on the IETF LAMPS composite signatures Internet-Draft.");
+                System.out.println("        OIDs 2.5.29.72/73/74 are X.509 alternate-signature extension OIDs");
+                System.out.println("        (ITU-T X.509 / ISO/IEC 9594-8). Not the composite-signatures draft.");
 
             } else if (altExtCount > 0) {
                 System.err.println("Alt Signature:     FAIL: incomplete hybrid extensions " +
