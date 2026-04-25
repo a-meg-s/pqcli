@@ -7,6 +7,7 @@ import org.bouncycastle.asn1.x509.SubjectAltPublicKeyInfo;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jcajce.CompositePrivateKey;
 import org.bouncycastle.operator.ContentSigner;
@@ -187,8 +188,8 @@ public class CertificateGenerator implements Callable<Integer> {
     /**
      * Generate a self-signed X.509 certificate.
      */
-    private static X509Certificate generateCertificate(AlgorithmSet algorithmSet, KeyPair keyPair, KeyPair altKeyPair,
-                                                       String subject, double validityDays)
+    static X509Certificate generateCertificate(AlgorithmSet algorithmSet, KeyPair keyPair, KeyPair altKeyPair,
+                                               String subject, double validityDays)
             throws Exception {
 
         /* Certificate fields */
@@ -199,7 +200,7 @@ public class CertificateGenerator implements Callable<Integer> {
             throw new IllegalArgumentException("Invalid subject name: " + e.getMessage());
         }
         X500Name issuerName = subjectName;
-        BigInteger serialNumber = BigInteger.valueOf(new SecureRandom().nextInt(Integer.MAX_VALUE));
+        BigInteger serialNumber = generateSerial();
         Date notBefore = new Date(System.currentTimeMillis() - 24 * 60 * 60 * 1000); // Current time - 1 day
         Date notAfter = new Date(System.currentTimeMillis() + 1000L * (long)(validityDays * 60.0 * 60.0 * 24.0)); // Current time + validityDays
 
@@ -216,6 +217,13 @@ public class CertificateGenerator implements Callable<Integer> {
         /* Extensions */
         certBuilder.addExtension(org.bouncycastle.asn1.x509.Extension.basicConstraints, true, new BasicConstraints(true));
         certBuilder.addExtension(org.bouncycastle.asn1.x509.Extension.keyUsage, true, new KeyUsage(KeyUsage.keyCertSign | KeyUsage.cRLSign));
+        JcaX509ExtensionUtils extUtils = new JcaX509ExtensionUtils();
+        certBuilder.addExtension(org.bouncycastle.asn1.x509.Extension.subjectKeyIdentifier, false,
+                extUtils.createSubjectKeyIdentifier(keyPair.getPublic()));
+        // Self-signed: AKID keyIdentifier = own public key hash (same as SKID)
+        certBuilder.addExtension(org.bouncycastle.asn1.x509.Extension.authorityKeyIdentifier, false,
+                extUtils.createAuthorityKeyIdentifier(
+                        org.bouncycastle.asn1.x509.SubjectPublicKeyInfo.getInstance(keyPair.getPublic().getEncoded())));
 
         /* Signing */
         ContentSigner contentSigner = getSigner(algorithmSet.getAlgorithms(), keyPair);
@@ -267,6 +275,21 @@ public class CertificateGenerator implements Callable<Integer> {
             os.write(KeyGenerator.wrapBase64(certificate.getEncoded()).getBytes());
             os.write(("-----END CERTIFICATE-----\n").getBytes());
         }
+    }
+
+    /**
+     * Generates a positive non-zero random serial number with 128 bits of entropy.
+     * RFC 5280 §4.1.2.2: serial must be positive, ≤ 20 octets DER-encoded.
+     * BigInteger(128, rng) is non-negative; the loop excludes zero (probability 1/2^128).
+     * Maximum value 2^128-1 encodes as 17 bytes (with DER leading 0x00), within the 20-octet limit.
+     */
+    static BigInteger generateSerial() {
+        SecureRandom rng = new SecureRandom();
+        BigInteger s;
+        do {
+            s = new BigInteger(128, rng);
+        } while (s.signum() == 0);
+        return s;
     }
 
     // Convert OpenSSL DN (/CN=Test/C=DE) to X.500 format (CN=Test,C=DE)

@@ -15,6 +15,7 @@ import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.openssl.PEMKeyPair;
 import org.bouncycastle.openssl.PEMParser;
@@ -130,7 +131,7 @@ public class SignCommand implements Callable<Integer> {
             X500Name subject = csr.getSubject();
 
             X509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
-                    issuer, BigInteger.valueOf(System.currentTimeMillis()),
+                    issuer, CertificateGenerator.generateSerial(),
                     notBefore, notAfter, subject,
                     csrPubKey);
             // Profile-conditional extensions — applied to both hybrid and non-hybrid paths.
@@ -142,6 +143,11 @@ public class SignCommand implements Callable<Integer> {
                 certBuilder.addExtension(Extension.basicConstraints, true, new BasicConstraints(false));
                 certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature));
             }
+            JcaX509ExtensionUtils extUtils = new JcaX509ExtensionUtils();
+            certBuilder.addExtension(Extension.subjectKeyIdentifier, false,
+                    extUtils.createSubjectKeyIdentifier(csrPubKey));
+            certBuilder.addExtension(Extension.authorityKeyIdentifier, false,
+                    extUtils.createAuthorityKeyIdentifier(new X509CertificateHolder(caCert.getEncoded())));
             ContentSigner primarySigner = new JcaContentSignerBuilder(sigAlgo)
                     .setProvider("BC").build(caPrivateKey);
 
