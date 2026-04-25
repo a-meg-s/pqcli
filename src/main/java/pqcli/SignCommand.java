@@ -1,8 +1,10 @@
 package pqcli;
 
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.pkcs.Attribute;
 import org.bouncycastle.asn1.pkcs.CertificationRequest;
 import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.jcajce.CompositePublicKey;
 import org.bouncycastle.asn1.x509.AltSignatureAlgorithm;
 import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.Extension;
@@ -63,6 +65,14 @@ public class SignCommand implements Callable<Integer> {
             description = "Print signing timing")
     private boolean printTiming;
 
+    @Option(names = "--profile", defaultValue = "leaf",
+            description = "Certificate profile: leaf (default) or intermediate-ca")
+    private String profileStr;
+
+    @Option(names = "--path-len", defaultValue = "-1",
+            description = "Path length constraint for intermediate-ca profile (>= 0). Not valid for leaf.")
+    private int pathLen;
+
     private String prefixed(String name) {
         return outPrefix.isEmpty() ? name : outPrefix + "_" + name;
     }
@@ -71,6 +81,19 @@ public class SignCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         ProviderSetup.setupProvider();
         try {
+            // Parse and validate profile
+            CertificateProfile profile;
+            try {
+                profile = CertificateProfile.valueOf(profileStr.toUpperCase().replace('-', '_'));
+            } catch (IllegalArgumentException e) {
+                System.err.println("Error: Unknown profile '" + profileStr + "'. Valid values: leaf, intermediate-ca");
+                return 1;
+            }
+            if (pathLen >= 0 && profile != CertificateProfile.INTERMEDIATE_CA) {
+                System.err.println("Error: --path-len is only valid with --profile intermediate-ca");
+                return 1;
+            }
+
             // Step 1: Load inputs
             X509Certificate caCert = ViewCommand.loadCertificate(caCertFile);
             PrivateKey caPrivateKey = loadPrivKey(caKeyFile);
@@ -87,8 +110,19 @@ public class SignCommand implements Callable<Integer> {
                 return 1;
             }
 
+            // Validate issuer is a CA cert capable of signing
+            if (caCert.getBasicConstraints() < 0) {
+                System.err.println("Error: Issuer certificate is not a CA certificate (BasicConstraints CA=true required).");
+                return 1;
+            }
+            boolean[] caKu = caCert.getKeyUsage();
+            if (caKu != null && !caKu[5]) {
+                System.err.println("Error: Issuer certificate KeyUsage does not allow certificate signing (keyCertSign required).");
+                return 1;
+            }
+
             // Common certificate structure — used by both hybrid and non-hybrid paths
-            String sigAlgo = caCert.getSigAlgName();
+            String sigAlgo = deriveSigAlgoFromCaKey(caCert);
             long t0 = System.currentTimeMillis();
             Date notBefore = new Date();
             Date notAfter = new Date(notBefore.getTime() + (long) days * 86400000L);
@@ -98,10 +132,16 @@ public class SignCommand implements Callable<Integer> {
             X509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
                     issuer, BigInteger.valueOf(System.currentTimeMillis()),
                     notBefore, notAfter, subject,
-                    new JcaPEMKeyConverter().setProvider("BC").getPublicKey(csr.getSubjectPublicKeyInfo()));
-            // End-entity extensions — applied to both hybrid and non-hybrid paths.
-            certBuilder.addExtension(Extension.basicConstraints, true, new BasicConstraints(false));
-            certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature));
+                    csrPubKey);
+            // Profile-conditional extensions — applied to both hybrid and non-hybrid paths.
+            if (profile == CertificateProfile.INTERMEDIATE_CA) {
+                BasicConstraints bc = (pathLen >= 0) ? new BasicConstraints(pathLen) : new BasicConstraints(true);
+                certBuilder.addExtension(Extension.basicConstraints, true, bc);
+                certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.keyCertSign | KeyUsage.cRLSign));
+            } else {
+                certBuilder.addExtension(Extension.basicConstraints, true, new BasicConstraints(false));
+                certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature));
+            }
             ContentSigner primarySigner = new JcaContentSignerBuilder(sigAlgo)
                     .setProvider("BC").build(caPrivateKey);
 
@@ -283,6 +323,55 @@ public class SignCommand implements Callable<Integer> {
                 throw new IllegalArgumentException("Unrecognized PEM object type: "
                         + (obj == null ? "null" : obj.getClass().getName()));
             }
+        }
+    }
+
+    /**
+     * Derives the signing algorithm from the CA cert's own subject public key.
+     * Using caCert.getSigAlgName() would return the *parent's* signing algorithm,
+     * which breaks cross-type chains (e.g., RSA root issuing an EC intermediate).
+     */
+    static String deriveSigAlgoFromCaKey(X509Certificate caCert) {
+        PublicKey pub = caCert.getPublicKey();
+        // Composite: self-signed only in this tool, so sigAlgName is correct
+        if (pub instanceof CompositePublicKey) {
+            return caCert.getSigAlgName();
+        }
+        SubjectPublicKeyInfo spki = SubjectPublicKeyInfo.getInstance(pub.getEncoded());
+        String oid = spki.getAlgorithm().getAlgorithm().getId();
+        switch (oid) {
+            case "1.2.840.113549.1.1.1": { // RSA
+                int bits = ((java.security.interfaces.RSAPublicKey) pub).getModulus().bitLength();
+                String base = bits >= 4096 ? "SHA512withRSA" : bits >= 3072 ? "SHA384withRSA" : "SHA256withRSA";
+                if (caCert.getSigAlgName().toUpperCase().contains("MGF1")) base = base + "andMGF1";
+                return base;
+            }
+            case "1.2.840.10045.2.1": { // EC — curve OID in AlgorithmIdentifier.parameters
+                String curveOid = ASN1ObjectIdentifier.getInstance(spki.getAlgorithm().getParameters()).getId();
+                if ("1.3.132.0.34".equals(curveOid)) return "SHA384withECDSA"; // secp384r1
+                if ("1.3.132.0.35".equals(curveOid)) return "SHA512withECDSA"; // secp521r1
+                return "SHA256withECDSA"; // secp256r1 and others
+            }
+            case "1.3.101.112": return "Ed25519";
+            case "1.3.101.113": return "Ed448";
+            case "1.2.840.10040.4.1": return "SHA256withDSA"; // DSA
+            case "2.16.840.1.101.3.4.3.17": return "ML-DSA-44";
+            case "2.16.840.1.101.3.4.3.18": return "ML-DSA-65";
+            case "2.16.840.1.101.3.4.3.19": return "ML-DSA-87";
+            case "2.16.840.1.101.3.4.3.20": return "SLH-DSA-SHA2-128s";
+            case "2.16.840.1.101.3.4.3.21": return "SLH-DSA-SHA2-128f";
+            case "2.16.840.1.101.3.4.3.22": return "SLH-DSA-SHA2-192s";
+            case "2.16.840.1.101.3.4.3.23": return "SLH-DSA-SHA2-192f";
+            case "2.16.840.1.101.3.4.3.24": return "SLH-DSA-SHA2-256s";
+            case "2.16.840.1.101.3.4.3.25": return "SLH-DSA-SHA2-256f";
+            case "2.16.840.1.101.3.4.3.26": return "SLH-DSA-SHAKE-128s";
+            case "2.16.840.1.101.3.4.3.27": return "SLH-DSA-SHAKE-128f";
+            case "2.16.840.1.101.3.4.3.28": return "SLH-DSA-SHAKE-192s";
+            case "2.16.840.1.101.3.4.3.29": return "SLH-DSA-SHAKE-192f";
+            case "2.16.840.1.101.3.4.3.30": return "SLH-DSA-SHAKE-256s";
+            case "2.16.840.1.101.3.4.3.31": return "SLH-DSA-SHAKE-256f";
+            default:
+                return caCert.getSigAlgName(); // fallback
         }
     }
 
