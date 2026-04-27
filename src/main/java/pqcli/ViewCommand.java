@@ -1,6 +1,8 @@
 package pqcli;
 
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.ASN1OctetString;
+import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.Extension;
@@ -149,6 +151,20 @@ public class ViewCommand implements Callable<Integer> {
         } else if (oid.equals(Extension.altSignatureValue)) {
             System.out.println(marker + " Alt Signature Value  (OID: " + oid.getId() + ")");
 
+        } else if (oid.getId().equals("1.3.6.1.5.5.7.1.36")) {
+            // RFC 9763: RelatedCertificate ::= SEQUENCE { hashAlgorithm DigestAlgorithmIdentifier, hashValue OCTET STRING }
+            System.out.println(marker + " Related Certificate (RFC 9763 id-pe-relatedCert)  (OID: " + oid.getId() + ")");
+            try {
+                ASN1Sequence seq = ASN1Sequence.getInstance(ext.getParsedValue());
+                AlgorithmIdentifier hashAlg = AlgorithmIdentifier.getInstance(seq.getObjectAt(0));
+                byte[] hashValue = ASN1OctetString.getInstance(seq.getObjectAt(1)).getOctets();
+                String algOid = hashAlg.getAlgorithm().getId();
+                System.out.println("             Hash Alg:  " + oidToName(algOid) + "  (OID: " + algOid + ")");
+                System.out.println("             Hash:       " + bytesToHex(hashValue) + "  (" + hashValue.length + " bytes)");
+            } catch (Exception e) {
+                System.out.println("             (parse error: " + e.getMessage() + ")");
+            }
+
         } else {
             System.out.println(marker + " " + oidToName(oid.getId()) + "  (OID: " + oid.getId() + ")");
         }
@@ -238,6 +254,9 @@ public class ViewCommand implements Callable<Integer> {
             case "2.5.29.72": return "Subject Alt Public Key Info";
             case "2.5.29.73": return "Alt Signature Algorithm";
             case "2.5.29.74": return "Alt Signature Value";
+            // RFC 9763 (Proposed Standard, June 2025): dual-certificate binding
+            case "1.3.6.1.5.5.7.1.36": return "Related Certificate (RFC 9763 id-pe-relatedCert)";
+            case "1.2.840.113549.1.9.16.2.60": return "relatedCertRequest (RFC 9763 id-aa-relatedCertRequest)";
             default: return oid;
         }
     }
@@ -259,5 +278,11 @@ public class ViewCommand implements Callable<Integer> {
         byte[] decoded = Base64.getDecoder().decode(pemContent);
         CertificateFactory certFactory = CertificateFactory.getInstance("X.509", "BC");
         return (X509Certificate) certFactory.generateCertificate(new ByteArrayInputStream(decoded));
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) sb.append(String.format("%02x", b));
+        return sb.toString();
     }
 }
