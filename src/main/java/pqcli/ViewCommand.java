@@ -254,6 +254,10 @@ public class ViewCommand implements Callable<Integer> {
             case "2.5.29.72": return "Subject Alt Public Key Info";
             case "2.5.29.73": return "Alt Signature Algorithm";
             case "2.5.29.74": return "Alt Signature Value";
+            // SHA-2 digest algorithm OIDs (NIST FIPS 180-4)
+            case "2.16.840.1.101.3.4.2.1": return "SHA-256";
+            case "2.16.840.1.101.3.4.2.2": return "SHA-384";
+            case "2.16.840.1.101.3.4.2.3": return "SHA-512";
             // RFC 9763 (Proposed Standard, June 2025): dual-certificate binding
             case "1.3.6.1.5.5.7.1.36": return "Related Certificate (RFC 9763 id-pe-relatedCert)";
             case "1.2.840.113549.1.9.16.2.60": return "relatedCertRequest (RFC 9763 id-aa-relatedCertRequest)";
