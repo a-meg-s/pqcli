@@ -1,6 +1,11 @@
 package pqcli;
 
+import org.bouncycastle.asn1.ASN1BitString;
+import org.bouncycastle.asn1.ASN1IA5String;
+import org.bouncycastle.asn1.ASN1Integer;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.ASN1Sequence;
+import org.bouncycastle.asn1.cms.IssuerAndSerialNumber;
 import org.bouncycastle.asn1.pkcs.Attribute;
 import org.bouncycastle.asn1.pkcs.CertificationRequest;
 import org.bouncycastle.asn1.x500.X500Name;
@@ -35,7 +40,9 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.Signature;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.concurrent.Callable;
 
@@ -80,6 +87,14 @@ public class SignCommand implements Callable<Integer> {
                 "NOT RFC 9763-compliant issuance. Only valid for leaf (end-entity) profiles.")
     private String relatedCertTestExtensionFile;
 
+    @Option(names = "--related-cert",
+            description = "RFC 9763 Stage 4: referenced certificate for CA-side relatedCertRequest " +
+                "PoP verification and RelatedCertificate extension issuance. " +
+                "Requires the CSR to contain attribute OID 1.2.840.113549.1.9.16.2.60. " +
+                "Only valid for leaf (end-entity) profile. " +
+                "Cannot be combined with --related-cert-test-extension.")
+    private String relatedCertFile;
+
     private String prefixed(String name) {
         return outPrefix.isEmpty() ? name : outPrefix + "_" + name;
     }
@@ -105,6 +120,17 @@ public class SignCommand implements Callable<Integer> {
                 System.err.println("       RFC 9763 forbids RelatedCertificate extension in CA certificates.");
                 return 1;
             }
+            if (relatedCertFile != null && relatedCertTestExtensionFile != null) {
+                System.err.println("Error: --related-cert and --related-cert-test-extension cannot be combined.");
+                System.err.println("       Use --related-cert for Stage 4 (RFC 9763-compliant issuance).");
+                System.err.println("       Use --related-cert-test-extension for Stage 2 (test mode, no PoP verified).");
+                return 1;
+            }
+            if (relatedCertFile != null && profile != CertificateProfile.LEAF) {
+                System.err.println("Error: --related-cert is only valid for leaf (end-entity) profile.");
+                System.err.println("       RFC 9763 forbids RelatedCertificate extension in CA certificates.");
+                return 1;
+            }
 
             // Step 1: Load inputs
             X509Certificate caCert = ViewCommand.loadCertificate(caCertFile);
@@ -122,6 +148,26 @@ public class SignCommand implements Callable<Integer> {
                 return 1;
             }
 
+            // === Stage 4: detect relatedCertRequest attribute ===
+            final ASN1ObjectIdentifier OID_RC_REQ = new ASN1ObjectIdentifier("1.2.840.113549.1.9.16.2.60");
+            Attribute[] relatedReqAttrs = csr.getAttributes(OID_RC_REQ);
+            boolean csrHasRelatedAttr = relatedReqAttrs != null && relatedReqAttrs.length > 0;
+            if (csrHasRelatedAttr && relatedCertFile == null) {
+                System.err.println("Error: CSR contains relatedCertRequest attribute (OID 1.2.840.113549.1.9.16.2.60).");
+                System.err.println("       Provide --related-cert <file> so the CA can verify the referenced cert and PoP.");
+                return 1;
+            }
+            if (!csrHasRelatedAttr && relatedCertFile != null) {
+                System.err.println("Error: --related-cert requires CSR attribute OID 1.2.840.113549.1.9.16.2.60 (relatedCertRequest).");
+                System.err.println("       This CSR does not contain that attribute.");
+                return 1;
+            }
+            if (csrHasRelatedAttr && profile != CertificateProfile.LEAF) {
+                System.err.println("Error: relatedCertRequest attribute processing requires leaf (end-entity) profile.");
+                System.err.println("       RFC 9763 forbids RelatedCertificate extension in CA certificates.");
+                return 1;
+            }
+
             // Validate issuer is a CA cert capable of signing
             if (caCert.getBasicConstraints() < 0) {
                 System.err.println("Error: Issuer certificate is not a CA certificate (BasicConstraints CA=true required).");
@@ -131,6 +177,77 @@ public class SignCommand implements Callable<Integer> {
             if (caKu != null && !caKu[5]) {
                 System.err.println("Error: Issuer certificate KeyUsage does not allow certificate signing (keyCertSign required).");
                 return 1;
+            }
+
+            // === Stage 4: parse RequesterCertificate, verify certID and PoP ===
+            X509Certificate relatedCert = null;       // non-null only after successful Stage 4 processing
+            boolean performedCompliantIssuance = false;
+            if (csrHasRelatedAttr) {
+                // Parse RequesterCertificate ::= SEQUENCE { certID, requestTime, locationInfo, signature }
+                ASN1Sequence reqCertSeq;
+                try {
+                    reqCertSeq = ASN1Sequence.getInstance(relatedReqAttrs[0].getAttrValues().getObjectAt(0));
+                } catch (Exception e) {
+                    System.err.println("Error: Failed to parse relatedCertRequest RequesterCertificate: " + e.getMessage());
+                    return 1;
+                }
+                if (reqCertSeq.size() != 4) {
+                    System.err.println("Error: RequesterCertificate must have 4 elements, found " + reqCertSeq.size() + ".");
+                    return 1;
+                }
+                IssuerAndSerialNumber parsedCertID  = IssuerAndSerialNumber.getInstance(reqCertSeq.getObjectAt(0));
+                ASN1Integer           parsedReqTime = ASN1Integer.getInstance(reqCertSeq.getObjectAt(1));
+                String                locationUri   = ASN1IA5String.getInstance(reqCertSeq.getObjectAt(2)).getString();
+                ASN1BitString         parsedSig     = ASN1BitString.getInstance(reqCertSeq.getObjectAt(3));
+
+                // Load referenced cert from --related-cert
+                try {
+                    relatedCert = ViewCommand.loadCertificate(relatedCertFile);
+                } catch (Exception e) {
+                    System.err.println("Error loading --related-cert: " + e.getMessage());
+                    return 1;
+                }
+
+                // certID match: DER comparison avoids X500Name string round-trip differences
+                X509CertificateHolder refHolder = new X509CertificateHolder(relatedCert.getEncoded());
+                IssuerAndSerialNumber expectedCertID = new IssuerAndSerialNumber(
+                        refHolder.getIssuer(), relatedCert.getSerialNumber());
+                if (!Arrays.equals(
+                        parsedCertID.toASN1Primitive().getEncoded("DER"),
+                        expectedCertID.toASN1Primitive().getEncoded("DER"))) {
+                    System.err.println("Error: relatedCertRequest certID does not match --related-cert.");
+                    System.err.println("  Expected: issuer=" + refHolder.getIssuer()
+                            + "  serial=" + relatedCert.getSerialNumber().toString(16).toUpperCase());
+                    System.err.println("  Parsed:   issuer=" + parsedCertID.getName()
+                            + "  serial=" + parsedCertID.getSerialNumber().getValue().toString(16).toUpperCase());
+                    return 1;
+                }
+
+                // PoP verification: signature covers DER(certID) || DER(requestTime)
+                // signed with the referenced cert's private key.
+                // Uses java.security.Signature with the BC provider — same BC JCA registry as
+                // JcaContentSignerBuilder used on the CSR side (Stage 3).
+                String popSigAlgo = deriveSigAlgoFromCaKey(relatedCert);
+                byte[] certIdDer  = parsedCertID.toASN1Primitive().getEncoded("DER");
+                byte[] reqTimeDer = parsedReqTime.getEncoded("DER");
+                byte[] popInput   = new byte[certIdDer.length + reqTimeDer.length];
+                System.arraycopy(certIdDer,  0, popInput, 0,               certIdDer.length);
+                System.arraycopy(reqTimeDer, 0, popInput, certIdDer.length, reqTimeDer.length);
+                try {
+                    Signature popVerifier = Signature.getInstance(popSigAlgo, "BC");
+                    popVerifier.initVerify(relatedCert.getPublicKey());
+                    popVerifier.update(popInput);
+                    if (!popVerifier.verify(parsedSig.getBytes())) {
+                        System.err.println("Error: relatedCertRequest PoP signature verification failed.");
+                        return 1;
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error: relatedCertRequest PoP verification failed: " + e.getMessage());
+                    return 1;
+                }
+                System.out.println("  relatedCertRequest PoP: OK");
+                System.out.println("  locationInfo URI:       " + locationUri);
+                performedCompliantIssuance = true;
             }
 
             // Common certificate structure — used by both hybrid and non-hybrid paths
@@ -160,8 +277,13 @@ public class SignCommand implements Callable<Integer> {
             certBuilder.addExtension(Extension.authorityKeyIdentifier, false,
                     extUtils.createAuthorityKeyIdentifier(new X509CertificateHolder(caCert.getEncoded())));
             if (relatedCertTestExtensionFile != null) {
-                java.security.cert.X509Certificate relatedCert =
+                java.security.cert.X509Certificate testRelatedCert =
                         ViewCommand.loadCertificate(relatedCertTestExtensionFile);
+                certBuilder.addExtension(
+                        CertificateGenerator.buildRelatedCertExtension(testRelatedCert, "SHA-256"));
+            }
+            if (performedCompliantIssuance) {
+                // relatedCert was already loaded and PoP-verified above
                 certBuilder.addExtension(
                         CertificateGenerator.buildRelatedCertExtension(relatedCert, "SHA-256"));
             }
@@ -322,6 +444,10 @@ public class SignCommand implements Callable<Integer> {
             if (relatedCertTestExtensionFile != null) {
                 System.out.println("NOTE: RelatedCertificate extension added (test mode — hash binding only).");
                 System.out.println("      No relatedCertRequest PoP was verified. NOT RFC 9763-compliant issuance.");
+            }
+            if (performedCompliantIssuance) {
+                System.out.println("  RelatedCertificate extension included (RFC 9763 Stage 4).");
+                System.out.println("  RFC 9763-compliant issuance path completed.");
             }
             if (printTiming) {
                 System.out.println("  Sign time:  " + signMs + " ms");
