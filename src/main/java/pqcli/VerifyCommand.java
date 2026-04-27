@@ -1,6 +1,10 @@
 package pqcli;
 
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.ASN1OctetString;
+import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.x509.AltSignatureAlgorithm;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.AuthorityKeyIdentifier;
 import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.Extensions;
@@ -16,6 +20,7 @@ import org.bouncycastle.operator.jcajce.JcaContentVerifierProviderBuilder;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+import java.security.MessageDigest;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -37,6 +42,11 @@ public class VerifyCommand implements Callable<Integer> {
     @Option(names = {"-trust"}, description = "Trust anchor certificate for full chain verification (PEM)")
     private String trustFile;
 
+    @Option(names = {"--related-cert"},
+            description = "Check RelatedCertificate hash binding (RFC 9763 Stage 2 test mode). " +
+                "Cannot be combined with -CAfile, -chain, or -trust.")
+    private String relatedCertFile;
+
     @Override
     public Integer call() {
         ProviderSetup.setupProvider();
@@ -50,10 +60,20 @@ public class VerifyCommand implements Callable<Integer> {
                 System.err.println("Error: Use -in with -CAfile for one-link verification, or provide both -chain and -trust for chain verification.");
                 return 1;
             }
+            if (relatedCertFile != null && (caFile != null || chainFile != null || trustFile != null)) {
+                System.err.println("Error: --related-cert cannot be combined with -CAfile, -chain, or -trust.");
+                System.err.println("       Verify each cert chain separately after checking the binding.");
+                return 1;
+            }
 
             // Mode B: full 3-tier chain verification
             if (chainFile != null && trustFile != null) {
                 return verifyChain();
+            }
+
+            // Mode C: RelatedCertificate hash-binding check (RFC 9763 Stage 2 test mode)
+            if (relatedCertFile != null) {
+                return verifyRelatedCertBinding();
             }
 
             // Mode A: one-link signature verification (unchanged behavior)
@@ -317,6 +337,68 @@ public class VerifyCommand implements Callable<Integer> {
 
         } catch (Exception e) {
             System.err.println("Error during chain verification: " + e.getMessage());
+            return 1;
+        }
+    }
+
+    // =========================================================================
+    // Mode C: RelatedCertificate hash-binding check (RFC 9763 Stage 2 test mode)
+    // =========================================================================
+
+    private int verifyRelatedCertBinding() {
+        try {
+            X509Certificate cert        = ViewCommand.loadCertificate(certFile);
+            X509Certificate relatedCert = ViewCommand.loadCertificate(relatedCertFile);
+
+            System.out.println("RFC 9763 RelatedCertificate hash-binding check");
+            System.out.println("  In cert:      " + cert.getSubjectX500Principal().getName());
+            System.out.println("  Related cert: " + relatedCert.getSubjectX500Principal().getName());
+            System.out.println();
+
+            X509CertificateHolder holder = new X509CertificateHolder(cert.getEncoded());
+            Extensions exts = holder.getExtensions();
+            org.bouncycastle.asn1.x509.Extension relatedExt = exts == null ? null
+                    : exts.getExtension(new ASN1ObjectIdentifier("1.3.6.1.5.5.7.1.36"));
+            if (relatedExt == null) {
+                System.err.println("FAIL: No RelatedCertificate extension (OID 1.3.6.1.5.5.7.1.36) in -in cert.");
+                return 1;
+            }
+
+            // RelatedCertificate ::= SEQUENCE { hashAlgorithm DigestAlgorithmIdentifier, hashValue OCTET STRING }
+            ASN1Sequence seq = ASN1Sequence.getInstance(relatedExt.getParsedValue());
+            AlgorithmIdentifier hashAlgId = AlgorithmIdentifier.getInstance(seq.getObjectAt(0));
+            byte[] expectedHash = ASN1OctetString.getInstance(seq.getObjectAt(1)).getOctets();
+            String algOid = hashAlgId.getAlgorithm().getId();
+
+            String jcaAlgName;
+            switch (algOid) {
+                case "2.16.840.1.101.3.4.2.1": jcaAlgName = "SHA-256"; break;
+                case "2.16.840.1.101.3.4.2.2": jcaAlgName = "SHA-384"; break;
+                default:
+                    System.err.println("FAIL: Unsupported hash algorithm OID in RelatedCertificate extension: " + algOid);
+                    return 1;
+            }
+
+            byte[] actualHash = MessageDigest.getInstance(jcaAlgName).digest(relatedCert.getEncoded());
+
+            String algName = ViewCommand.oidToName(algOid);
+            System.out.println("Binding (-in → related):");
+            System.out.println("  Hash Alg:  " + algName + "  (OID: " + algOid + ")");
+            System.out.println("  Expected:  " + ViewCommand.bytesToHex(expectedHash) + "  (" + expectedHash.length + " bytes)");
+            System.out.println("  Actual:    " + ViewCommand.bytesToHex(actualHash)   + "  (" + actualHash.length   + " bytes)");
+
+            boolean match = Arrays.equals(expectedHash, actualHash);
+            System.out.println("  Result:    " + (match ? "OK" : "FAIL — hash mismatch"));
+            System.out.println();
+            System.out.println("NOTE: This verifies only the hash binding.");
+            System.out.println("      No relatedCertRequest PoP was verified (Stage 2 test mode only).");
+            System.out.println("      Chain validity: verify each cert separately with -CAfile or -chain/-trust.");
+
+            if (!match) System.err.println("FAIL: RelatedCertificate hash mismatch.");
+            return match ? 0 : 1;
+
+        } catch (Exception e) {
+            System.err.println("Error during RelatedCertificate binding check: " + e.getMessage());
             return 1;
         }
     }

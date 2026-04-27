@@ -74,6 +74,12 @@ public class SignCommand implements Callable<Integer> {
             description = "Path length constraint for intermediate-ca profile (>= 0). Not valid for leaf.")
     private int pathLen;
 
+    @Option(names = "--related-cert-test-extension",
+            description = "TEST MODE ONLY: add RelatedCertificate extension (OID 1.3.6.1.5.5.7.1.36) " +
+                "containing a SHA-256 hash of this certificate. No relatedCertRequest PoP is verified. " +
+                "NOT RFC 9763-compliant issuance. Only valid for leaf (end-entity) profiles.")
+    private String relatedCertTestExtensionFile;
+
     private String prefixed(String name) {
         return outPrefix.isEmpty() ? name : outPrefix + "_" + name;
     }
@@ -92,6 +98,11 @@ public class SignCommand implements Callable<Integer> {
             }
             if (pathLen >= 0 && profile != CertificateProfile.INTERMEDIATE_CA) {
                 System.err.println("Error: --path-len is only valid with --profile intermediate-ca");
+                return 1;
+            }
+            if (relatedCertTestExtensionFile != null && profile != CertificateProfile.LEAF) {
+                System.err.println("Error: --related-cert-test-extension is only valid for leaf (end-entity) certificates.");
+                System.err.println("       RFC 9763 forbids RelatedCertificate extension in CA certificates.");
                 return 1;
             }
 
@@ -148,6 +159,12 @@ public class SignCommand implements Callable<Integer> {
                     extUtils.createSubjectKeyIdentifier(csrPubKey));
             certBuilder.addExtension(Extension.authorityKeyIdentifier, false,
                     extUtils.createAuthorityKeyIdentifier(new X509CertificateHolder(caCert.getEncoded())));
+            if (relatedCertTestExtensionFile != null) {
+                java.security.cert.X509Certificate relatedCert =
+                        ViewCommand.loadCertificate(relatedCertTestExtensionFile);
+                certBuilder.addExtension(
+                        CertificateGenerator.buildRelatedCertExtension(relatedCert, "SHA-256"));
+            }
             ContentSigner primarySigner = new JcaContentSignerBuilder(sigAlgo)
                     .setProvider("BC").build(caPrivateKey);
 
@@ -302,6 +319,10 @@ public class SignCommand implements Callable<Integer> {
             }
             System.out.println("  Valid until:" + notAfter);
             System.out.println("  File:       " + prefixed("certificate.pem"));
+            if (relatedCertTestExtensionFile != null) {
+                System.out.println("NOTE: RelatedCertificate extension added (test mode — hash binding only).");
+                System.out.println("      No relatedCertRequest PoP was verified. NOT RFC 9763-compliant issuance.");
+            }
             if (printTiming) {
                 System.out.println("  Sign time:  " + signMs + " ms");
             }

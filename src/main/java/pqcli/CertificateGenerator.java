@@ -1,7 +1,13 @@
 package pqcli;
 
+import org.bouncycastle.asn1.ASN1EncodableVector;
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.DEROctetString;
+import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.BasicConstraints;
+import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.KeyUsage;
 import org.bouncycastle.asn1.x509.SubjectAltPublicKeyInfo;
 import org.bouncycastle.cert.X509CertificateHolder;
@@ -290,6 +296,39 @@ public class CertificateGenerator implements Callable<Integer> {
             s = new BigInteger(128, rng);
         } while (s.signum() == 0);
         return s;
+    }
+
+    /**
+     * Build a RelatedCertificate extension (OID 1.3.6.1.5.5.7.1.36, RFC 9763) containing
+     * a hash of the DER encoding of {@code relatedCert}.
+     *
+     * This is a TEST-MODE helper. The resulting extension carries only a hash binding.
+     * No relatedCertRequest PoP has been verified. Do NOT claim RFC 9763-compliant
+     * issuance when using this helper without Stage 4 CA-side PoP verification.
+     *
+     * Supported hashAlg values: "SHA-256" (OID 2.16.840.1.101.3.4.2.1),
+     *                            "SHA-384" (OID 2.16.840.1.101.3.4.2.2).
+     */
+    static Extension buildRelatedCertExtension(java.security.cert.X509Certificate relatedCert,
+                                               String hashAlg) throws Exception {
+        ASN1ObjectIdentifier hashAlgOid;
+        switch (hashAlg.toUpperCase().replace("-", "")) {
+            case "SHA256": hashAlgOid = new ASN1ObjectIdentifier("2.16.840.1.101.3.4.2.1"); break;
+            case "SHA384": hashAlgOid = new ASN1ObjectIdentifier("2.16.840.1.101.3.4.2.2"); break;
+            default:
+                throw new IllegalArgumentException(
+                    "Unsupported hash algorithm for RelatedCertificate extension: " + hashAlg
+                    + ". Supported: SHA-256, SHA-384.");
+        }
+        byte[] hashValue = MessageDigest.getInstance(hashAlg).digest(relatedCert.getEncoded());
+        ASN1EncodableVector seq = new ASN1EncodableVector();
+        seq.add(new AlgorithmIdentifier(hashAlgOid));
+        seq.add(new DEROctetString(hashValue));
+        return new Extension(
+            new ASN1ObjectIdentifier("1.3.6.1.5.5.7.1.36"),
+            false,
+            new DERSequence(seq).getEncoded()
+        );
     }
 
     // Convert OpenSSL DN (/CN=Test/C=DE) to X.500 format (CN=Test,C=DE)
