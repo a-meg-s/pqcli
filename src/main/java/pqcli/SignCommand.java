@@ -76,7 +76,7 @@ public class SignCommand implements Callable<Integer> {
 
     @Option(names = "--related-cert-test-extension",
             description = "TEST MODE ONLY: add RelatedCertificate extension (OID 1.3.6.1.5.5.7.1.36) " +
-                "containing a SHA-256 hash of this certificate. No relatedCertRequest PoP is verified. " +
+                "containing a SHA-256 hash of the referenced certificate. No relatedCertRequest PoP is verified. " +
                 "NOT RFC 9763-compliant issuance. Only valid for leaf (end-entity) profiles.")
     private String relatedCertTestExtensionFile;
 
