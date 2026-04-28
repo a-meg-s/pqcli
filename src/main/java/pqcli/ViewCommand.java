@@ -13,6 +13,7 @@ import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.jcajce.CompositePublicKey;
 
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 import java.io.ByteArrayInputStream;
@@ -35,6 +36,10 @@ public class ViewCommand implements Callable<Integer> {
     @Parameters(index = "0", description = "Certificate file to view (PEM)")
     private String certificateFile;
 
+    @Option(names = "--full",
+            description = "Also print the full raw Bouncy Castle certificate dump after the structured view.")
+    private boolean fullDump;
+
     @Override
     public Integer call() {
         ProviderSetup.setupProvider();
@@ -42,6 +47,11 @@ public class ViewCommand implements Callable<Integer> {
             X509Certificate cert = loadCertificate(certificateFile);
             X509CertificateHolder holder = new X509CertificateHolder(cert.getEncoded());
             printCertInfo(cert, holder);
+            if (fullDump) {
+                System.out.println();
+                System.out.println("--- Full Certificate Dump ---");
+                System.out.println(cert);
+            }
         } catch (Exception e) {
             System.err.println("Error during certificate loading: " + e.getMessage());
             return 1;
