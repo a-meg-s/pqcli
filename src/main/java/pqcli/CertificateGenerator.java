@@ -115,14 +115,24 @@ public class CertificateGenerator implements Callable<Integer> {
 
             System.out.println("Certificate and key saved successfully!");
             System.out.println("  Subject:    " + certificate.getSubjectX500Principal().getName());
+            System.out.println("  Issuer:     " + certificate.getIssuerX500Principal().getName());
+            System.out.println("  Serial:     " + certificate.getSerialNumber().toString(16).toUpperCase());
             System.out.println("  Algorithm:  " + certificate.getSigAlgName());
-            System.out.println("  Valid until:" + certificate.getNotAfter());
+            System.out.println("  Not Before: " + certificate.getNotBefore());
+            System.out.println("  Not After:  " + certificate.getNotAfter());
+            if (algorithmSet.isHybrid()) {
+                System.out.println("  Files:      " + prefixed("certificate.pem") + ", "
+                        + prefixed("private_key.pem") + ", " + prefixed("public_key.pem") + ", "
+                        + prefixed("alt_private_key.pem") + ", " + prefixed("alt_public_key.pem"));
+            } else {
+                System.out.println("  Files:      " + prefixed("certificate.pem") + ", "
+                        + prefixed("private_key.pem") + ", " + prefixed("public_key.pem"));
+            }
+            System.out.println("  View:       pqcli view " + prefixed("certificate.pem"));
             if (printTiming) {
                 System.out.println("  Key gen time:  " + keyGenMs + " ms");
                 System.out.println("  Cert gen time: " + certGenMs + " ms");
             }
-            System.out.println();
-            System.out.println(certificate);
 
         } catch (Exception e) {
             System.err.println("Error during certificate generation: " + e.getMessage());

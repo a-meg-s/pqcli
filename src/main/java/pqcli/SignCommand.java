@@ -430,7 +430,8 @@ public class SignCommand implements Callable<Integer> {
             System.out.println("Signed certificate saved successfully!");
             System.out.println("  Subject:    " + subject);
             System.out.println("  Issuer:     " + issuer);
-            System.out.println("  Sig Alg:    " + sigAlgo);
+            System.out.println("  Serial:     " + certificate.getSerialNumber().toString(16).toUpperCase());
+            System.out.println("  Algorithm:  " + sigAlgo);
             if (isHybridIssued) {
                 System.out.println("  Alt Sig Alg: " + altSigAlgoForOutput);
                 System.out.println("  Type:       Hybrid (X.509 alt-signature extensions 2.5.29.72/73/74)");
@@ -439,8 +440,10 @@ public class SignCommand implements Callable<Integer> {
                 System.out.println("        Not the same as the composite-signatures IETF draft.");
                 System.out.println("        Verified with BC-specific API only (not portable JCA behavior).");
             }
-            System.out.println("  Valid until:" + notAfter);
+            System.out.println("  Not Before: " + notBefore);
+            System.out.println("  Not After:  " + notAfter);
             System.out.println("  File:       " + prefixed("certificate.pem"));
+            System.out.println("  View:       pqcli view " + prefixed("certificate.pem"));
             if (relatedCertTestExtensionFile != null) {
                 System.out.println("NOTE: RelatedCertificate extension added (test mode — hash binding only).");
                 System.out.println("      No relatedCertRequest PoP was verified. NOT RFC 9763-compliant issuance.");
@@ -452,7 +455,6 @@ public class SignCommand implements Callable<Integer> {
             if (printTiming) {
                 System.out.println("  Sign time:  " + signMs + " ms");
             }
-            System.out.println(certificate);
             return 0;
 
         } catch (Exception e) {
