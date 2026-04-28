@@ -29,7 +29,8 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
-@Command(name = "view", description = "Display structured details of an X.509 certificate (subject, issuer, public key, extensions, OIDs)")
+@Command(name = "view", description = "Display structured details of an X.509 certificate (subject, issuer, public key, extensions, OIDs)",
+    mixinStandardHelpOptions = true)
 public class ViewCommand implements Callable<Integer> {
     @Parameters(index = "0", description = "Certificate file to view (PEM)")
     private String certificateFile;

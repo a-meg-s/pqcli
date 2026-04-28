@@ -24,7 +24,7 @@ import org.bouncycastle.jcajce.spec.SLHDSAParameterSpec;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
-@Command(name="key", description="Generates a public/private key pair")
+@Command(name="key", description="Generates a public/private key pair", mixinStandardHelpOptions = true)
 public class KeyGenerator implements Callable<Integer> {
     @Option(names = { "-newkey", "-nk", "-new", "-t" }, required = true, description = {
         "Key algorithm. Single: RSA:3072, EC:secp256r1, DSA:2048, Ed25519, Ed448,",

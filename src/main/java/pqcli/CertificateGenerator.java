@@ -35,7 +35,8 @@ import java.util.concurrent.Callable;
 import java.util.Date;
 import java.util.regex.*;
 
-@Command(name="cert", description="Generates a self-signed X.509 v3 certificate (classical, PQC, composite, or hybrid)")
+@Command(name="cert", description="Generates a self-signed X.509 v3 certificate (classical, PQC, composite, or hybrid)",
+    mixinStandardHelpOptions = true)
 public class CertificateGenerator implements Callable<Integer> {
 
     @Option(names = { "-sig", "-s" }, description = "Reserved — no effect in the current self-signed implementation. Signature algorithm is always auto-derived from -newkey.")

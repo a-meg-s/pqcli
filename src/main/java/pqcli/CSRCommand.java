@@ -45,7 +45,7 @@ import java.util.concurrent.Callable;
 // CSR attribute field. This is BC-specific and not defined by RFC 2986 or any
 // widely adopted standard. Interoperability with non-BC tooling is not guaranteed.
 // Parsers that do not implement this BC extension will ignore the alt content.
-@Command(name = "csr", description = "Generate a PKCS#10 certificate signing request")
+@Command(name = "csr", description = "Generate a PKCS#10 certificate signing request", mixinStandardHelpOptions = true)
 public class CSRCommand implements Callable<Integer> {
 
     @Option(names = {"-newkey", "-nk"}, required = true, description = {

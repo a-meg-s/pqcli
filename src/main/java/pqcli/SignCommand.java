@@ -46,7 +46,8 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.concurrent.Callable;
 
-@Command(name = "sign", description = "Sign a CSR with a CA key to produce a chain-of-trust certificate")
+@Command(name = "sign", description = "Sign a CSR with a CA key to produce a chain-of-trust certificate",
+    mixinStandardHelpOptions = true)
 public class SignCommand implements Callable<Integer> {
 
     @Option(names = {"-csr"}, required = true, description = "PKCS#10 CSR file (PEM)")

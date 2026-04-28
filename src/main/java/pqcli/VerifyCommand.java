@@ -27,7 +27,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Callable;
 
-@Command(name = "verify", description = "Verify an X.509 certificate signature")
+@Command(name = "verify", description = "Verify an X.509 certificate signature", mixinStandardHelpOptions = true)
 public class VerifyCommand implements Callable<Integer> {
 
     @Option(names = {"-in"}, required = true, description = "Certificate to verify (PEM)")
