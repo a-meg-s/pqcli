@@ -35,10 +35,10 @@ import java.util.concurrent.Callable;
 import java.util.Date;
 import java.util.regex.*;
 
-@Command(name="cert", description="Generates an X.509 v3 certificate with a public/private key pair")
+@Command(name="cert", description="Generates a self-signed X.509 v3 certificate (classical, PQC, composite, or hybrid)")
 public class CertificateGenerator implements Callable<Integer> {
 
-    @Option(names = { "-sig", "-s" }, description = "Signature algorithm override. Auto-derived from key algorithm if omitted.")
+    @Option(names = { "-sig", "-s" }, description = "Reserved — no effect in the current self-signed implementation. Signature algorithm is always auto-derived from -newkey.")
     private String signatureAlgorithm;
 
     @Option(names = { "-newkey", "-nk" }, required = true, description = {

@@ -34,7 +34,11 @@ public class KeyGenerator implements Callable<Integer> {
     })
     private String keyAlgorithm;
 
-    @Option(names = { "-out", "-o" }, description = "Output filename prefix (e.g. 'rsa3072' → rsa3072_private_key.pem)", defaultValue = "")
+    @Option(names = { "-out", "-o" }, description = {
+        "Output filename prefix. E.g. 'rsa3072' produces:",
+        "  rsa3072_private_key.pem, rsa3072_public_key.pem.",
+        "  Hybrid also adds: rsa3072_alt_private_key.pem, rsa3072_alt_public_key.pem."
+    }, defaultValue = "")
     private String outPrefix;
 
     @Option(names = "--timing", description = "Print key generation timing", defaultValue = "false")

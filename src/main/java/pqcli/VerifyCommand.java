@@ -43,8 +43,11 @@ public class VerifyCommand implements Callable<Integer> {
     private String trustFile;
 
     @Option(names = {"--related-cert"},
-            description = "Check RelatedCertificate hash binding (RFC 9763 Stage 2 test mode). " +
-                "Cannot be combined with -CAfile, -chain, or -trust.")
+            description = {
+                "Check RelatedCertificate extension hash binding (RFC 9763, OID 1.3.6.1.5.5.7.1.36).",
+                "Hash-binding check only — does not re-verify CSR PoP or certificate chain.",
+                "Cannot be combined with -CAfile, -chain, or -trust."
+            })
     private String relatedCertFile;
 
     @Override

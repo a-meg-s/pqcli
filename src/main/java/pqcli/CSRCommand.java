@@ -68,7 +68,10 @@ public class CSRCommand implements Callable<Integer> {
     private boolean printTiming;
 
     @Option(names = "--related-cert",
-            description = "RFC 9763 Stage 3: referenced existing certificate for relatedCertRequest attribute.")
+            description = {
+                "RFC 9763 Stage 3: adds relatedCertRequest attribute (OID 1.2.840.113549.1.9.16.2.60) to the CSR.",
+                "Requires --related-cert-key and --related-cert-url. Not valid with composite or hybrid CSR."
+            })
     private String relatedCertFile;
 
     @Option(names = "--related-cert-key",
