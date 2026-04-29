@@ -25,7 +25,9 @@ import java.security.cert.X509Certificate;
 import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
@@ -293,6 +295,18 @@ public class ViewCommand implements Callable<Integer> {
         byte[] decoded = Base64.getDecoder().decode(pemContent);
         CertificateFactory certFactory = CertificateFactory.getInstance("X.509", "BC");
         return (X509Certificate) certFactory.generateCertificate(new ByteArrayInputStream(decoded));
+    }
+
+    static List<X509Certificate> loadCertificates(String pemFilePath) throws Exception {
+        byte[] fileBytes = Files.readAllBytes(Paths.get(pemFilePath));
+        CertificateFactory certFactory = CertificateFactory.getInstance("X.509", "BC");
+        Collection<? extends java.security.cert.Certificate> raw =
+                certFactory.generateCertificates(new ByteArrayInputStream(fileBytes));
+        List<X509Certificate> certs = new ArrayList<>(raw.size());
+        for (java.security.cert.Certificate c : raw) {
+            certs.add((X509Certificate) c);
+        }
+        return certs; // empty list if no cert blocks present
     }
 
     static String bytesToHex(byte[] bytes) {
