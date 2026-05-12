@@ -128,7 +128,7 @@ public class KeyGenerator implements Callable<Integer> {
         // Remove this if there is no reason to use raw Dilithium keys over ML-DSA
         if (algorithm.equals("dilithium-bcpqc")) {
             // Initialisation for PQC Algorithm CRYSTALS-Dilithium (ML-DSA / FIPS 204 is based on Dilithium)
-            // Note: The Dilitium implementation in the BCPQC provider outputs a private key BC 1.79+ can no longer use for signing.
+            // Note: The Dilithium implementation in the BCPQC provider outputs a private key BC 1.79+ can no longer use for signing.
             KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("Dilithium", "BCPQC");
 
             // Dilithium security level (2, 3, 5 available)
@@ -155,7 +155,7 @@ public class KeyGenerator implements Callable<Integer> {
         KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(algorithm, "BC");
 
         if (algorithm.equals("ec")) {
-            // Initialisierung mit der angegebenen Kurve (z. B. prime256v1)
+            // Initialize with the specified named curve (e.g. prime256v1)
             keyPairGenerator.initialize(new ECGenParameterSpec(curveOrKeyLength), new SecureRandom());
         }
         else if (algorithm.equals("rsa")) {
@@ -192,7 +192,7 @@ public class KeyGenerator implements Callable<Integer> {
             // Initialisation for PQC Algorithm ML-DSA (based on Dilithium)
             keyPairGenerator = KeyPairGenerator.getInstance("ML-DSA", "BC");
 
-            // Dilithium security level (2, 3, 5 available)
+            // ML-DSA parameter set: 44/65/87 (aliases: 2/3/5)
             int level = Integer.parseInt(curveOrKeyLength);
             MLDSAParameterSpec spec;
             switch (level) {

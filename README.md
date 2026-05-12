@@ -26,6 +26,8 @@ This generates a complete .jar file in the `/target` dir.
 
 ## Usage
 
+> **Invocation note:** Examples using `pqcli` assume a local wrapper or shell alias pointing to the built jar. Without such a wrapper, invoke with `java -jar target/<built-jar>.jar ...` (e.g. `java -jar target/pqcli-0.1.0.jar`).
+
 Examples
 
 Generate a self-signed PQC X.509 Certificate using a ML-DSA key pair (FIPS 204 / RFC 9881):
@@ -92,7 +94,7 @@ Intermediate and leaf need not use the same algorithm as the root.
 
 #### Composite
 
-Replace `<algo>` with a composite algorithm, e.g. `RSA:3072_ML-DSA:65`. All three certs in the chain use the same composite named-combination.
+Replace `<algo>` with a composite algorithm, e.g. `RSA:3072_ML-DSA:65`. Typically all three certs in the chain use the same composite named-combination.
 
 ```shell
 pqcli cert -newkey RSA:3072_ML-DSA:65 -subj /CN=Composite-Root -out root
@@ -148,18 +150,57 @@ pqcli verify -in cert.pem -CAfile issuer.pem # one issuer
 ```
 Checks: cryptographic signature (primary + hybrid alt if present). No semantic PKI checks.
 
-**Chain mode** (new):
+**Chain mode:**
 ```shell
 pqcli verify -in leaf.pem -chain intermediate.pem -trust root.pem
 ```
 Checks per link: primary signature, hybrid alt-signature if present.
 Semantic checks: certificate validity dates, `BasicConstraints` (CA=true required for root and intermediate; CA=false required for leaf), `KeyUsage keyCertSign` for CA certificates, `pathLen` constraint, SKID/AKID key identifier linkage when both are present, and unsupported critical extensions.
 
+**Dynamic chain mode** (path building from a bundle):
+```shell
+pqcli verify -in leaf.pem -untrusted intermediates.pem -trust root.pem
+```
+Builds the chain automatically from the provided intermediate bundle. `-chain` is an alias for `-untrusted` when used with `-trust`. Add `--show-chain` to print the resolved path with indexed positions.
+
 **What verify does not check**: revocation (OCSP/CRL not implemented). Output includes a note: `Revocation: not checked (out of scope)`.
 
 #### Mixed-mode chains
 
 The issuer's algorithm determines the signature on each issued certificate independently. The subject's key type may differ from the issuer's. One constraint applies: a hybrid (alternate-signature) subject CSR requires a hybrid issuer, because the issuer must produce both the primary and the alternate signature. A hybrid issuer may issue a non-hybrid subject.
+
+#### RFC 9763 Related Certificates workflow
+
+pqcli implements RFC 9763 (Proposed Standard) for linking two certificates (e.g. a classical and a PQC cert for the same entity) via a hash binding and proof-of-possession.
+
+**Stage 3 — generate a CSR with a `relatedCertRequest` attribute:**
+```shell
+pqcli csr -newkey RSA:3072 -subj /CN=entity \
+  --related-cert classical_cert.pem \
+  --related-cert-key classical_private_key.pem \
+  --related-cert-url https://example.com/certs/classical.pem
+```
+Adds attribute OID `1.2.840.113549.1.9.16.2.60` with certID, timestamp, location URI, and a PoP signature. Only valid for single-algorithm CSRs (not composite or hybrid).
+
+**Stage 4 — CA signs the CSR and issues a cert with the `RelatedCertificate` extension (compliant issuance):**
+```shell
+pqcli sign -csr rc_csr.pem -CAcert ca_cert.pem -CAkey ca_private_key.pem \
+  --related-cert classical_cert.pem
+```
+The CA verifies the `relatedCertRequest` attribute PoP before issuing. Adds OID `1.3.6.1.5.5.7.1.36` to the issued certificate. Leaf profile only.
+
+**Stage 2 — test mode: add the extension without PoP verification (not RFC 9763-compliant issuance):**
+```shell
+pqcli sign -csr leaf_csr.pem -CAcert ca_cert.pem -CAkey ca_private_key.pem \
+  --related-cert-test-extension some_other_cert.pem
+```
+Adds the `RelatedCertificate` extension as a hash-only binding. No PoP is verified. Output includes a NOTE marking this as non-compliant test mode. Leaf profile only.
+
+**Verify the hash binding:**
+```shell
+pqcli verify -in issued_cert.pem --related-cert classical_cert.pem
+```
+Checks the `RelatedCertificate` extension hash. Does not re-verify CSR PoP or certificate chain. Cannot be combined with `-CAfile`, `-chain`, `-untrusted`, or `-trust`.
 
 ### CLI structure
 
@@ -171,26 +212,28 @@ csr | Generate a PKCS#10 certificate signing request (single, composite, hybrid)
 (crl) | Generate a certificate revocation list | —
 verify | Verify certificate signature: one-link mode (primary + hybrid alt) or full chain mode (-chain/-trust) with semantic PKI checks | ✔️
 sign | Sign a CSR with a CA key; --profile leaf\|intermediate-ca; issuer CA validation; SKID/AKID; 128-bit serial | ✔️
-view | Display certificate contents in human-readable form | ✔️
+view | Display structured certificate details (subject, issuer, public key, extensions, OIDs). `--full` also prints the raw Bouncy Castle dump. | ✔️
 
-#### cert API
-(not yet implemented, initial idea)
-Option | Description | Impl.
---- | --- | ---
--ca | The certificate of the authority that is included in the issuer field of the certificate. If omitted, the certificate is self-signed. |
--cakey | The private key of the CA, used to sign the certificate. |
--days | The validity period of the certificate from today in days. Defaults to one year. | ✔️
--key | The public key to certify. If omitted, a suitable keypair is generated. |
--newkey | The algorithm(s) to use for the newly generated key. Algorithms are separated by `,`, key size is specified by `:`. (e.g. `rsa:3072,ml-dsa:65` for an alternate-signature cert with RSA and ML-DSA-65) | ✔️
--sig | The algorithm(s) to use for the signing key(s). |
--subj | The subject DN to include in the certificate (supports both OpenSSL and X500 format, e.g. `/CN=Test/DC=testdc` or `CN=Test, DC=testdc`) | ✔️
+#### `cert` command options
 
-#### key API
+Option | Description
+--- | ---
+`-newkey` / `-nk` | Key algorithm (required). Same syntax as `key -t`. See supported algorithms table below.
+`-subj` / `-subject` | Subject DN in OpenSSL format (e.g. `/CN=Root/C=DE`). Default: `CN=PQCLI Test Certificate, C=DE`
+`-days` / `-d` | Certificate validity in days. Default: `365`
+`-out` / `-o` | Output filename prefix (e.g. `root` → `root_certificate.pem`, `root_private_key.pem`)
+`-sig` / `-s` | Reserved — no effect. Signature algorithm is always auto-derived from `-newkey`.
+`--timing` | Print key generation and certificate signing timing
 
-(initial idea)
-Option | Description | Impl.
---- | --- | ---
--newkey / -new / -t | The algorithm(s) to use to generate a new keypair, e.g. `rsa:2048`. | ✔️
+The `cert` command always generates a self-signed certificate. The generated keypair is always written alongside the certificate.
+
+#### `key` command options
+
+Option | Description
+--- | ---
+`-newkey` / `-nk` / `-new` / `-t` | Key algorithm (required). See supported algorithms table below. Hybrid syntax (`,`) generates two keypairs.
+`-out` / `-o` | Output filename prefix
+`--timing` | Print key generation timing
 
 #### Supported signature key algorithms
 
@@ -213,7 +256,8 @@ It is provided for keypair generation and A/B testing only.
 
 - **ML-DSA**: FIPS 204 / RFC 9881. OIDs `2.16.840.1.101.3.4.3.17/18/19` are standards-track.
 - **SLH-DSA**: FIPS 205 / RFC 9909. Pure variants only; HashSLH-DSA / HashML-DSA prehash variants are out of scope.
-- **Alternate-signature certificates** (`RSA:3072,ML-DSA:65` syntax): use X.509 alternate-signature extensions (OIDs `2.5.29.72/73/74`) defined in ITU-T X.509 / ISO/IEC 9594-8. Verification uses the BC-specific `isAlternativeSignatureValid()` API. This is distinct from the IETF composite-signatures draft and from RFC 9763 related certificates (multi-cert hybrid); neither of those is implemented.
+- **Alternate-signature certificates** (`RSA:3072,ML-DSA:65` syntax): use X.509 alternate-signature extensions (OIDs `2.5.29.72/73/74`) defined in ITU-T X.509 / ISO/IEC 9594-8. Verification uses the BC-specific `isAlternativeSignatureValid()` API. This is distinct from the IETF composite-signatures draft.
+- **RFC 9763 related certificates** (Proposed Standard, June 2025): pqcli implements Stages 2–4 — `relatedCertRequest` CSR attribute generation (Stage 3), CA-side PoP verification and `RelatedCertificate` extension issuance (Stage 4), and hash-binding test mode (Stage 2, not compliant issuance). See RFC 9763 workflow section above.
 - **Composite certificates** (`RSA:3072_ML-DSA:65` syntax): experimental (draft, not RFC). Uses BC 1.84 named-combination API, emitting PKIX-arc OIDs (`1.3.6.1.5.5.7.6.*`) per draft-ietf-lamps-pq-composite-sigs-18. Only ML-DSA-based named combinations from the active draft are supported; other composites are rejected. RSA composite defaults to the PSS variant.
 
 ## Acknowledgements

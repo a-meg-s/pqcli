@@ -66,7 +66,6 @@ public class CertificateGenerator implements Callable<Integer> {
         return outPrefix.isEmpty() ? name : outPrefix + "_" + name;
     }
 
-	//public static void main(String[] args) {
     public Integer call() throws Exception {
         ProviderSetup.setupProvider();
         try {
@@ -173,7 +172,7 @@ public class CertificateGenerator implements Callable<Integer> {
                 curveSize = Integer.parseInt(matcher.group());
             }
 
-            // RFC 5656 section 6.2.1:
+            // Conventional curve-to-hash pairing (SHA-256 for ≤256-bit curves, SHA-384 for ≤384-bit, SHA-512 otherwise):
             if (curveSize > 384) {
                 return "SHA512withECDSA";
             } else if (curveSize > 256) {

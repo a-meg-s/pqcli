@@ -256,7 +256,8 @@ public class CSRCommand implements Callable<Integer> {
                         + "  serial=" + refSerial.toString(16).toUpperCase());
                 System.out.println("  URI:    " + relatedCertUrl);
                 System.out.println("  PoP:    included");
-                System.out.println("NOTE: CA-side PoP verification and compliant issuance are Stage 4 and are not implemented in this stage.");
+                System.out.println("NOTE: CA-side PoP verification and RelatedCertificate extension issuance (RFC 9763 Stage 4) happen");
+                System.out.println("      in pqcli sign --related-cert, not in this command.");
             }
             if (printTiming) {
                 System.out.println("  Key gen time: " + keyGenMs + " ms");

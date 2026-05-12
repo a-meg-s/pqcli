@@ -336,7 +336,7 @@ public class SignCommand implements Callable<Integer> {
 
                 // Step 7: Validate CA alt key ↔ CA cert alt public key.
                 // BC-native sign-then-verify using JcaContentSignerBuilder / ContentVerifierProvider.
-                // JCA Signature API (java.security.Signature) is not used anywhere in this codebase.
+                // java.security.Signature is used for PoP verification; JcaContentSignerBuilder is used for other signing operations.
                 try {
                     ContentSigner testSigner = new JcaContentSignerBuilder(altSigAlgo)
                             .setProvider("BC").build(caAltPrivateKey);
@@ -383,19 +383,19 @@ public class SignCommand implements Callable<Integer> {
                     return 1;
                 }
 
-                // Step 11: Build hybrid cert.
+                // Step 10: Build hybrid cert.
                 // Add EE alt public key as SubjectAltPublicKeyInfo extension (OID 2.5.29.72), non-critical.
-                // Same as CertificateGenerator.generateCertificate() line 227.
+                // Same as CertificateGenerator.generateCertificate() — adds EE alt public key as SubjectAltPublicKeyInfo (OID 2.5.29.72).
                 certBuilder.addExtension(Extension.subjectAltPublicKeyInfo, false,
                         SubjectAltPublicKeyInfo.getInstance(eeAltPubKey.getEncoded()));
                 ContentSigner altSigner = new JcaContentSignerBuilder(altSigAlgo)
                         .setProvider("BC").build(caAltPrivateKey);
                 // 3-arg build: primary signer, non-critical alt sig, alt signer.
-                // BC-specific: produces OIDs 2.5.29.72/73/74 per IETF LAMPS composite signatures draft.
-                // Same pattern as CertificateGenerator.java:240.
+                // BC-specific: produces OIDs 2.5.29.72/73/74 (X.509 alternate-signature extensions, ITU-T X.509 / ISO/IEC 9594-8).
+                // Same 3-arg build() pattern as CertificateGenerator.generateCertificate().
                 X509CertificateHolder certHolder = certBuilder.build(primarySigner, false, altSigner);
 
-                // Step 12: Post-build sanity check — both sigs must verify before writing any file.
+                // Step 11: Post-build sanity check — both sigs must verify before writing any file.
                 X509CertificateHolder issuedHolder = new X509CertificateHolder(certHolder.getEncoded());
                 certificate = new JcaX509CertificateConverter().setProvider("BC")
                         .getCertificate(certHolder);
