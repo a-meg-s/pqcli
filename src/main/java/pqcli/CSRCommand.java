@@ -90,7 +90,9 @@ public class CSRCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
+        PqCliCommand.t("CSRCommand.call() entered");
         ProviderSetup.setupProvider();
+        PqCliCommand.t("command body start");
         try {
             AlgorithmSet algorithmSet = new AlgorithmSet(keyAlgorithm);
 
@@ -263,9 +265,11 @@ public class CSRCommand implements Callable<Integer> {
                 System.out.println("  Key gen time: " + keyGenMs + " ms");
                 System.out.println("  CSR gen time: " + csrGenMs + " ms");
             }
+            PqCliCommand.t("CSRCommand.call() returning (success)");
             return 0;
         } catch (Exception e) {
             System.err.println("Error during CSR generation: " + e.getMessage());
+            PqCliCommand.t("CSRCommand.call() returning (error)");
             return 1;
         }
     }

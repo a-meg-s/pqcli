@@ -102,7 +102,9 @@ public class SignCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
+        PqCliCommand.t("SignCommand.call() entered");
         ProviderSetup.setupProvider();
+        PqCliCommand.t("command body start");
         try {
             // Parse and validate profile
             CertificateProfile profile;
@@ -456,10 +458,12 @@ public class SignCommand implements Callable<Integer> {
             if (printTiming) {
                 System.out.println("  Sign time:  " + signMs + " ms");
             }
+            PqCliCommand.t("SignCommand.call() returning (success)");
             return 0;
 
         } catch (Exception e) {
             System.err.println("Error during signing: " + e.getMessage());
+            PqCliCommand.t("SignCommand.call() returning (error)");
             return 1;
         }
     }

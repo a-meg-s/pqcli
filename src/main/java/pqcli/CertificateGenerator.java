@@ -67,7 +67,9 @@ public class CertificateGenerator implements Callable<Integer> {
     }
 
     public Integer call() throws Exception {
+        PqCliCommand.t("CertificateGenerator.call() entered");
         ProviderSetup.setupProvider();
+        PqCliCommand.t("command body start");
         try {
             double validityDaysD = 0;
             try {
@@ -137,8 +139,10 @@ public class CertificateGenerator implements Callable<Integer> {
         } catch (Exception e) {
             System.err.println("Error during certificate generation: " + e.getMessage());
             e.printStackTrace();
+            PqCliCommand.t("CertificateGenerator.call() returning (error)");
             return 1;
         }
+        PqCliCommand.t("CertificateGenerator.call() returning (success)");
         return 0;
 	}
 	

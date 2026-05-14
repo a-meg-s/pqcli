@@ -8,18 +8,18 @@ import org.bouncycastle.pqc.jcajce.provider.BouncyCastlePQCProvider;
 
 public class ProviderSetup {
     public static int setupProvider() {
+        PqCliCommand.t("setupProvider() entered");
         try {
-            // Add BouncyCastle as security provider
             Security.addProvider(new BouncyCastleProvider());
+            PqCliCommand.t("BC provider registered");
             Security.addProvider(new BouncyCastlePQCProvider());
+            PqCliCommand.t("BCPQC provider registered");
 
-            // Debugging: Check if BouncyCastle Provider is available
             Provider provider = Security.getProvider("BCPQC");
             if (provider == null) {
                 System.err.println("Error: BCPQC Provider not available!");
                 return 1;
             }
-            System.err.println("Successfully loaded BCPQC provider: " + provider.getInfo());
         }
         catch (Exception e) {
             System.err.println("Error during provider initialization: " + e.getMessage());

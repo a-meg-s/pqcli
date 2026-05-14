@@ -49,7 +49,9 @@ public class KeyGenerator implements Callable<Integer> {
     }
 
     public Integer call() throws Exception {
+        PqCliCommand.t("KeyGenerator.call() entered");
         ProviderSetup.setupProvider();
+        PqCliCommand.t("command body start");
         try {
             AlgorithmSet algorithmSet = new AlgorithmSet(keyAlgorithm);
 
@@ -85,9 +87,11 @@ public class KeyGenerator implements Callable<Integer> {
                 System.out.println(altKeyPair);
             }
 
+            PqCliCommand.t("KeyGenerator.call() returning (success)");
             return 0;
         } catch (Exception e) {
             System.err.println("Error during key generation: " + e.getMessage());
+            PqCliCommand.t("KeyGenerator.call() returning (error)");
             return 1;
         }
     }

@@ -61,7 +61,9 @@ public class VerifyCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
+        PqCliCommand.t("VerifyCommand.call() entered");
         ProviderSetup.setupProvider();
+        PqCliCommand.t("command body start");
         try {
             // Mode conflict checks
             if (caFile != null && (chainFile != null || untrustedFile != null || trustFile != null)) {
@@ -191,13 +193,16 @@ public class VerifyCommand implements Callable<Integer> {
                 return 1;
             }
 
+            PqCliCommand.t("VerifyCommand.call() returning (success)");
             return 0;
 
         } catch (java.security.SignatureException | java.security.cert.CertificateException e) {
             System.err.println("Primary Signature: FAIL: " + e.getMessage());
+            PqCliCommand.t("VerifyCommand.call() returning (sig fail)");
             return 1;
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
+            PqCliCommand.t("VerifyCommand.call() returning (error)");
             return 1;
         }
     }

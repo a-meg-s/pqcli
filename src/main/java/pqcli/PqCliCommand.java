@@ -19,8 +19,22 @@ import picocli.CommandLine.Command;
         SignCommand.class
     })
 public class PqCliCommand implements Callable<Integer> {
+
+    // Set at class-init time — before main() runs, after JVM loads this class.
+    // Referenced by ProviderSetup and all command classes for delta timestamps.
+    static final long T0 = System.nanoTime();
+    static final boolean TIMING = System.getenv("PQCLI_TIMING_DEBUG") != null;
+
+    static void t(String label) {
+        if (TIMING) {
+            long ms = (System.nanoTime() - T0) / 1_000_000L;
+            System.err.printf("[TIMING] %-45s +%d ms%n", label, ms);
+        }
+    }
+
     @Override
     public Integer call() {
+        t("PqCliCommand.call() entered (no subcommand)");
         System.out.println("\r\n" + // ASCII Art
                            "   /\\   \r\n" +   //    /\
                            " /\\\\//\\ \r\n" + //  /\\//\
@@ -28,11 +42,16 @@ public class PqCliCommand implements Callable<Integer> {
                            "| <||  |\r\n");    // | <||  |
 
         System.out.println("Please specify a command!");
+        t("PqCliCommand.call() returning");
         return 0;
     }
 
     public static void main(String[] args) {
-      int exitCode = new CommandLine(new PqCliCommand()).execute(args);
-      System.exit(exitCode);
-  }
+        t("main() entry");
+        CommandLine cmd = new CommandLine(new PqCliCommand());
+        t("CommandLine constructed (all subcommands loaded)");
+        int exitCode = cmd.execute(args);
+        t("execute() returned");
+        System.exit(exitCode);
+    }
 }

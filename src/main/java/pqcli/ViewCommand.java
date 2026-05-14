@@ -44,7 +44,9 @@ public class ViewCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
+        PqCliCommand.t("ViewCommand.call() entered");
         ProviderSetup.setupProvider();
+        PqCliCommand.t("command body start");
         try {
             X509Certificate cert = loadCertificate(certificateFile);
             X509CertificateHolder holder = new X509CertificateHolder(cert.getEncoded());
@@ -56,8 +58,10 @@ public class ViewCommand implements Callable<Integer> {
             }
         } catch (Exception e) {
             System.err.println("Error during certificate loading: " + e.getMessage());
+            PqCliCommand.t("ViewCommand.call() returning (error)");
             return 1;
         }
+        PqCliCommand.t("ViewCommand.call() returning (success)");
         return 0;
     }
 
