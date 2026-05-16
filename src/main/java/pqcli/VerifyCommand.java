@@ -20,6 +20,8 @@ import org.bouncycastle.operator.jcajce.JcaContentVerifierProviderBuilder;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.security.MessageDigest;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
@@ -211,6 +213,289 @@ public class VerifyCommand implements Callable<Integer> {
     // Mode B-dynamic: dynamic path builder with full policy checks
     // =========================================================================
 
+    // =========================================================================
+    // Static direct-core verify methods — no ProviderSetup, no file loading.
+    // Called by IndustrialBenchmarkRunner. out=nullOutputStream() suppresses
+    // informational output; System.err is used for failures throughout.
+    // =========================================================================
+
+    /**
+     * Mode A: single-link primary + hybrid alt-sig verification.
+     * caCert null → self-signed (cert verifies against its own key).
+     */
+    static int verifyModeA(X509Certificate cert, X509Certificate caCert, PrintStream out) {
+        try {
+            java.security.PublicKey verifyKey = (caCert != null) ? caCert.getPublicKey() : cert.getPublicKey();
+            cert.verify(verifyKey, "BC");
+            out.println("Primary Signature: OK");
+
+            X509CertificateHolder holder = new X509CertificateHolder(cert.getEncoded());
+            Extensions exts = holder.getExtensions();
+            boolean hasAltKey   = exts != null && exts.getExtension(Extension.subjectAltPublicKeyInfo) != null;
+            boolean hasAltAlgo  = exts != null && exts.getExtension(Extension.altSignatureAlgorithm)   != null;
+            boolean hasAltValue = exts != null && exts.getExtension(Extension.altSignatureValue)        != null;
+            int altExtCount = (hasAltKey ? 1 : 0) + (hasAltAlgo ? 1 : 0) + (hasAltValue ? 1 : 0);
+
+            if (altExtCount == 3) {
+                SubjectAltPublicKeyInfo altKeyInfo = SubjectAltPublicKeyInfo.fromExtensions(exts);
+                if (altKeyInfo == null) {
+                    System.err.println("Alt Signature: FAIL: could not parse SubjectAltPublicKeyInfo");
+                    return 1;
+                }
+                SubjectPublicKeyInfo altSpki = SubjectPublicKeyInfo.getInstance(altKeyInfo.toASN1Primitive());
+                java.security.PublicKey altPublicKey = new JcaPEMKeyConverter().setProvider("BC").getPublicKey(altSpki);
+
+                AltSignatureAlgorithm altSigAlgoExt = AltSignatureAlgorithm.fromExtensions(exts);
+                if (altSigAlgoExt == null) {
+                    System.err.println("Alt Signature: FAIL: could not parse AltSignatureAlgorithm");
+                    return 1;
+                }
+
+                java.security.PublicKey altVerifyKey = altPublicKey;
+                if (caCert != null) {
+                    X509CertificateHolder caHolder = new X509CertificateHolder(caCert.getEncoded());
+                    SubjectAltPublicKeyInfo caAltKeyInfo = SubjectAltPublicKeyInfo.fromExtensions(caHolder.getExtensions());
+                    if (caAltKeyInfo != null) {
+                        SubjectPublicKeyInfo caAltSpki = SubjectPublicKeyInfo.getInstance(caAltKeyInfo.toASN1Primitive());
+                        altVerifyKey = new JcaPEMKeyConverter().setProvider("BC").getPublicKey(caAltSpki);
+                    }
+                }
+
+                ContentVerifierProvider altProvider = new JcaContentVerifierProviderBuilder()
+                        .setProvider("BC").build(altVerifyKey);
+                boolean altValid;
+                try {
+                    altValid = holder.isAlternativeSignatureValid(altProvider);
+                } catch (org.bouncycastle.cert.CertException e) {
+                    System.err.println("Alt Signature: FAIL: " + e.getMessage());
+                    return 1;
+                }
+                if (!altValid) {
+                    System.err.println("Alt Signature: FAIL: verification returned false");
+                    return 1;
+                }
+                out.println("Alt Signature: OK");
+            } else if (altExtCount > 0) {
+                System.err.println("Alt Signature: FAIL: incomplete hybrid extensions (found " + altExtCount + "/3)");
+                return 1;
+            }
+            return 0;
+        } catch (java.security.SignatureException | java.security.cert.CertificateException e) {
+            System.err.println("Primary Signature: FAIL: " + e.getMessage());
+            return 1;
+        } catch (Exception e) {
+            System.err.println("Error: " + e.getMessage());
+            return 1;
+        }
+    }
+
+    /**
+     * Mode B-strict: 3-cert fixed-chain verification with full PKI checks.
+     * leaf ← intermediate ← root.
+     */
+    static int verifyModeB(X509Certificate leaf, X509Certificate intermediate,
+                            X509Certificate root, PrintStream out) {
+        try {
+            boolean allPassed = true;
+
+            out.println("Chain verification (Mode B-strict):");
+            out.println("  Trust anchor: " + root.getSubjectX500Principal().getName());
+            out.println("  Intermediate: " + intermediate.getSubjectX500Principal().getName());
+            out.println("  Leaf:         " + leaf.getSubjectX500Principal().getName());
+            out.println();
+
+            if (!root.getIssuerX500Principal().equals(root.getSubjectX500Principal())) {
+                System.err.println("FAIL: Trust anchor is not self-signed");
+                allPassed = false;
+            }
+            if (!intermediate.getIssuerX500Principal().equals(root.getSubjectX500Principal())) {
+                System.err.println("FAIL: Intermediate issuer DN != trust subject DN");
+                allPassed = false;
+            }
+            if (!leaf.getIssuerX500Principal().equals(intermediate.getSubjectX500Principal())) {
+                System.err.println("FAIL: Leaf issuer DN != intermediate subject DN");
+                allPassed = false;
+            }
+
+            try { root.verify(root.getPublicKey(), "BC"); out.println("LINK 1 (trust self-sig): OK"); }
+            catch (Exception e) { System.err.println("FAIL [LINK 1]: " + e.getMessage()); allPassed = false; }
+            try { intermediate.verify(root.getPublicKey(), "BC"); out.println("LINK 2 (intermediate <- trust): OK"); }
+            catch (Exception e) { System.err.println("FAIL [LINK 2]: " + e.getMessage()); allPassed = false; }
+            try { leaf.verify(intermediate.getPublicKey(), "BC"); out.println("LINK 3 (leaf <- intermediate): OK"); }
+            catch (Exception e) { System.err.println("FAIL [LINK 3]: " + e.getMessage()); allPassed = false; }
+
+            allPassed &= checkHybridAltSigLink(root, root, "LINK 1 hybrid alt-sig");
+            allPassed &= checkHybridAltSigLink(intermediate, root, "LINK 2 hybrid alt-sig");
+            allPassed &= checkHybridAltSigLink(leaf, intermediate, "LINK 3 hybrid alt-sig");
+
+            for (X509Certificate c : new X509Certificate[]{root, intermediate, leaf}) {
+                try { c.checkValidity(); }
+                catch (java.security.cert.CertificateExpiredException e) {
+                    System.err.println("FAIL: Certificate expired: " + c.getSubjectX500Principal().getName());
+                    allPassed = false;
+                }
+                catch (java.security.cert.CertificateNotYetValidException e) {
+                    System.err.println("FAIL: Certificate not yet valid: " + c.getSubjectX500Principal().getName());
+                    allPassed = false;
+                }
+            }
+
+            if (root.getBasicConstraints() < 0)         { System.err.println("FAIL: Trust anchor is not CA"); allPassed = false; }
+            if (intermediate.getBasicConstraints() < 0) { System.err.println("FAIL: Intermediate is not CA"); allPassed = false; }
+            if (leaf.getBasicConstraints() >= 0)         { System.err.println("FAIL: Leaf has CA=true"); allPassed = false; }
+
+            boolean[] trustKu = root.getKeyUsage();
+            if (trustKu != null && !trustKu[5]) { System.err.println("FAIL: Trust anchor lacks keyCertSign"); allPassed = false; }
+            boolean[] intKu = intermediate.getKeyUsage();
+            if (intKu != null && !intKu[5]) { System.err.println("FAIL: Intermediate lacks keyCertSign"); allPassed = false; }
+
+            int rootPathLen = root.getBasicConstraints();
+            if (rootPathLen >= 0 && rootPathLen < 1) {
+                System.err.println("FAIL: pathLen constraint violated: trust pathLen=" + rootPathLen + " but 1 intermediate follows");
+                allPassed = false;
+            }
+
+            allPassed &= checkSkidAkidLinkage(intermediate, root, "intermediate <- trust");
+            allPassed &= checkSkidAkidLinkage(leaf, intermediate, "leaf <- intermediate");
+            allPassed &= checkHybridCompleteness(root);
+            allPassed &= checkHybridCompleteness(intermediate);
+            allPassed &= checkHybridCompleteness(leaf);
+
+            Set<String> knownCritical = new HashSet<>(Arrays.asList(
+                    Extension.basicConstraints.getId(), Extension.keyUsage.getId()));
+            for (X509Certificate c : new X509Certificate[]{root, intermediate, leaf}) {
+                Set<String> critOids = c.getCriticalExtensionOIDs();
+                if (critOids != null) {
+                    for (String oid : critOids) {
+                        if (!knownCritical.contains(oid)) {
+                            System.err.println("FAIL: Unsupported critical extension: " + oid + " in "
+                                    + c.getSubjectX500Principal().getName());
+                            allPassed = false;
+                        }
+                    }
+                }
+            }
+
+            out.println();
+            out.println("Chain verification: " + (allPassed ? "PASSED" : "FAILED"));
+            return allPassed ? 0 : 1;
+        } catch (Exception e) {
+            System.err.println("Error during chain verification: " + e.getMessage());
+            return 1;
+        }
+    }
+
+    /**
+     * Mode B-dynamic: dynamic path builder with full PKI checks.
+     * untrusted may be empty (trust-alone = verify-modeB-direct).
+     */
+    static int verifyDynamic(X509Certificate leaf, List<X509Certificate> untrusted,
+                              List<X509Certificate> trusted, PrintStream out) {
+        try {
+            List<X509Certificate> path = buildPath(leaf, untrusted, trusted, new LinkedHashSet<>());
+
+            if (path == null) {
+                System.err.println("FAIL: No valid path from leaf to a trusted root found.");
+                System.err.println("  Leaf:   " + leaf.getSubjectX500Principal().getName());
+                return 1;
+            }
+
+            int N = path.size();
+            boolean allPassed = true;
+
+            out.println("Chain verification (Mode B-dynamic):");
+            out.println("  Trust anchor: " + path.get(N - 1).getSubjectX500Principal().getName());
+            for (int i = N - 2; i >= 1; i--) {
+                out.println("  Intermediate: " + path.get(i).getSubjectX500Principal().getName());
+            }
+            out.println();
+
+            X509Certificate root = path.get(N - 1);
+            try { root.verify(root.getPublicKey(), "BC"); out.println("LINK 1 (trust self-sig): OK"); }
+            catch (Exception e) { System.err.println("FAIL [LINK 1]: " + e.getMessage()); allPassed = false; }
+
+            for (int i = N - 2; i >= 0; i--) {
+                int linkNum = N - i;
+                try {
+                    path.get(i).verify(path.get(i + 1).getPublicKey(), "BC");
+                    out.printf("LINK %-2d (%s): OK%n", linkNum,
+                            path.get(i).getSubjectX500Principal().getName()
+                                    + " <- " + path.get(i + 1).getSubjectX500Principal().getName());
+                } catch (Exception e) {
+                    System.err.printf("FAIL [LINK %d]: %s%n", linkNum, e.getMessage());
+                    allPassed = false;
+                }
+            }
+
+            for (X509Certificate cert : path) {
+                try { cert.checkValidity(); }
+                catch (java.security.cert.CertificateExpiredException e) {
+                    System.err.println("FAIL: expired: " + cert.getSubjectX500Principal().getName()); allPassed = false;
+                }
+                catch (java.security.cert.CertificateNotYetValidException e) {
+                    System.err.println("FAIL: not yet valid: " + cert.getSubjectX500Principal().getName()); allPassed = false;
+                }
+            }
+
+            for (int i = 1; i < N; i++) {
+                if (path.get(i).getBasicConstraints() < 0) {
+                    System.err.println("FAIL: CA cert at chain position " + i + " must have BasicConstraints CA=true");
+                    allPassed = false;
+                }
+            }
+            if (N > 1 && path.get(0).getBasicConstraints() >= 0) {
+                System.err.println("FAIL: Leaf unexpectedly has CA=true"); allPassed = false;
+            }
+            for (int i = 1; i < N; i++) {
+                boolean[] ku = path.get(i).getKeyUsage();
+                if (ku != null && !ku[5]) {
+                    System.err.println("FAIL: CA cert at position " + i + " lacks keyCertSign"); allPassed = false;
+                }
+            }
+            for (int i = 1; i < N; i++) {
+                int bc = path.get(i).getBasicConstraints();
+                if (bc >= 0 && bc != Integer.MAX_VALUE && (i - 1) > bc) {
+                    System.err.println("FAIL: pathLen violated at " + path.get(i).getSubjectX500Principal().getName());
+                    allPassed = false;
+                }
+            }
+            for (int i = 0; i < N - 1; i++) {
+                allPassed &= checkSkidAkidLinkage(path.get(i), path.get(i + 1),
+                        path.get(i).getSubjectX500Principal().getName()
+                                + " <- " + path.get(i + 1).getSubjectX500Principal().getName());
+            }
+            for (int i = 0; i < N - 1; i++) {
+                int linkNum = N - i;
+                allPassed &= checkHybridAltSigLink(path.get(i), path.get(i + 1), "LINK " + linkNum + " hybrid alt-sig");
+            }
+            allPassed &= checkHybridAltSigLink(path.get(N - 1), path.get(N - 1), "LINK 1 hybrid alt-sig (trust self-sig)");
+            for (X509Certificate cert : path) {
+                allPassed &= checkHybridCompleteness(cert);
+            }
+            Set<String> knownCritical = new HashSet<>(Arrays.asList(
+                    Extension.basicConstraints.getId(), Extension.keyUsage.getId()));
+            for (X509Certificate cert : path) {
+                Set<String> critOids = cert.getCriticalExtensionOIDs();
+                if (critOids != null) {
+                    for (String oid : critOids) {
+                        if (!knownCritical.contains(oid)) {
+                            System.err.println("FAIL: Unsupported critical extension: " + oid
+                                    + " in " + cert.getSubjectX500Principal().getName());
+                            allPassed = false;
+                        }
+                    }
+                }
+            }
+
+            out.println();
+            out.println("Chain verification: " + (allPassed ? "PASSED" : "FAILED"));
+            return allPassed ? 0 : 1;
+        } catch (Exception e) {
+            System.err.println("Error during chain verification: " + e.getMessage());
+            return 1;
+        }
+    }
+
     private int verifyDynamic() {
         try {
             X509Certificate leaf = ViewCommand.loadCertificate(certFile);
@@ -382,7 +667,7 @@ public class VerifyCommand implements Callable<Integer> {
         }
     }
 
-    private List<X509Certificate> buildPath(
+    private static List<X509Certificate> buildPath(
             X509Certificate current,
             List<X509Certificate> untrusted,
             List<X509Certificate> trusted,
@@ -711,8 +996,8 @@ public class VerifyCommand implements Callable<Integer> {
         }
     }
 
-    private boolean checkHybridAltSigLink(X509Certificate subjectCert, X509Certificate issuerCert,
-                                           String linkDesc) {
+    private static boolean checkHybridAltSigLink(X509Certificate subjectCert, X509Certificate issuerCert,
+                                                  String linkDesc) {
         try {
             X509CertificateHolder holder = new X509CertificateHolder(subjectCert.getEncoded());
             Extensions exts = holder.getExtensions();
@@ -763,8 +1048,8 @@ public class VerifyCommand implements Callable<Integer> {
         }
     }
 
-    private boolean checkSkidAkidLinkage(X509Certificate subjectCert, X509Certificate issuerCert,
-                                          String linkDesc) {
+    private static boolean checkSkidAkidLinkage(X509Certificate subjectCert, X509Certificate issuerCert,
+                                                 String linkDesc) {
         try {
             X509CertificateHolder subjectHolder = new X509CertificateHolder(subjectCert.getEncoded());
             X509CertificateHolder issuerHolder  = new X509CertificateHolder(issuerCert.getEncoded());
@@ -794,7 +1079,7 @@ public class VerifyCommand implements Callable<Integer> {
         }
     }
 
-    private boolean checkHybridCompleteness(X509Certificate cert) {
+    private static boolean checkHybridCompleteness(X509Certificate cert) {
         try {
             X509CertificateHolder holder = new X509CertificateHolder(cert.getEncoded());
             Extensions exts = holder.getExtensions();
