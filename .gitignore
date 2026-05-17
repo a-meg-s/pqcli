@@ -45,3 +45,4 @@ out/
 ### NetBeans ###
 /nbproject/private/
 /build/
+benchmarks/.build/

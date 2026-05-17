@@ -468,7 +468,7 @@ public class SignCommand implements Callable<Integer> {
         }
     }
 
-    static PrivateKey loadPrivKey(String keyFile) throws Exception {
+    private static PrivateKey loadPrivKey(String keyFile) throws Exception {
         try (PEMParser pem = new PEMParser(new FileReader(keyFile))) {
             Object obj = pem.readObject();
             JcaPEMKeyConverter converter = new JcaPEMKeyConverter().setProvider("BC");
@@ -535,7 +535,7 @@ public class SignCommand implements Callable<Integer> {
         }
     }
 
-    static PKCS10CertificationRequest loadCsr(String csrFilePath) throws Exception {
+    private static PKCS10CertificationRequest loadCsr(String csrFilePath) throws Exception {
         try (PEMParser pem = new PEMParser(new FileReader(csrFilePath))) {
             Object obj = pem.readObject();
             if (obj instanceof PKCS10CertificationRequest) {
@@ -546,138 +546,6 @@ public class SignCommand implements Callable<Integer> {
                 throw new IllegalArgumentException("Not a CSR: "
                         + (obj == null ? "null" : obj.getClass().getName()));
             }
-        }
-    }
-
-    /**
-     * Core CSR signing: verifies CSR PoP, checks CA, builds and signs the certificate.
-     * No ProviderSetup call. No RFC 9763 related-cert extension support.
-     * Called directly by IndustrialBenchmarkRunner for warmed-JVM benchmarking.
-     * @param caAltPrivateKey null for non-hybrid CA
-     */
-    static X509Certificate signCsr(
-            PKCS10CertificationRequest csr,
-            X509Certificate caCert,
-            PrivateKey caPrivateKey,
-            PrivateKey caAltPrivateKey,
-            CertificateProfile profile,
-            int days) throws Exception {
-
-        // Primary CSR PoP
-        SubjectPublicKeyInfo csrSpki = csr.getSubjectPublicKeyInfo();
-        PublicKey csrPubKey = new JcaPEMKeyConverter().setProvider("BC").getPublicKey(csrSpki);
-        ContentVerifierProvider primaryCsrVerifier = new JcaContentVerifierProviderBuilder()
-                .setProvider("BC").build(csrPubKey);
-        if (!csr.isSignatureValid(primaryCsrVerifier)) {
-            throw new IllegalArgumentException("CSR primary signature is invalid (proof of possession failed)");
-        }
-
-        // CA is-a-CA checks
-        if (caCert.getBasicConstraints() < 0) {
-            throw new IllegalArgumentException("Issuer certificate is not a CA (BasicConstraints CA=true required)");
-        }
-        boolean[] caKu = caCert.getKeyUsage();
-        if (caKu != null && !caKu[5]) {
-            throw new IllegalArgumentException("Issuer certificate KeyUsage does not allow certificate signing");
-        }
-
-        // Build certificate
-        String sigAlgo = deriveSigAlgoFromCaKey(caCert);
-        Date notBefore = new Date();
-        Date notAfter = new Date(notBefore.getTime() + (long) days * 86400000L);
-        X500Name issuer = new X500Name(caCert.getSubjectX500Principal().getName("RFC1779"));
-        X500Name subject = csr.getSubject();
-
-        X509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
-                issuer, CertificateGenerator.generateSerial(), notBefore, notAfter, subject, csrPubKey);
-
-        if (profile == CertificateProfile.INTERMEDIATE_CA) {
-            certBuilder.addExtension(Extension.basicConstraints, true, new BasicConstraints(true));
-            certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.keyCertSign | KeyUsage.cRLSign));
-        } else {
-            certBuilder.addExtension(Extension.basicConstraints, true, new BasicConstraints(false));
-            certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature));
-        }
-        JcaX509ExtensionUtils extUtils = new JcaX509ExtensionUtils();
-        certBuilder.addExtension(Extension.subjectKeyIdentifier, false,
-                extUtils.createSubjectKeyIdentifier(csrPubKey));
-        certBuilder.addExtension(Extension.authorityKeyIdentifier, false,
-                extUtils.createAuthorityKeyIdentifier(new X509CertificateHolder(caCert.getEncoded())));
-
-        ContentSigner primarySigner = new JcaContentSignerBuilder(sigAlgo)
-                .setProvider("BC").build(caPrivateKey);
-
-        if (csr.hasAltPublicKey()) {
-            // Hybrid path
-            if (caAltPrivateKey == null) {
-                throw new IllegalArgumentException("CSR contains hybrid alt content but no CA alt key provided (-CAaltkey)");
-            }
-            X509CertificateHolder caHolder = new X509CertificateHolder(caCert.getEncoded());
-            Extensions caExts = caHolder.getExtensions();
-            if (caExts == null
-                    || caExts.getExtension(Extension.subjectAltPublicKeyInfo) == null
-                    || caExts.getExtension(Extension.altSignatureAlgorithm) == null) {
-                throw new IllegalArgumentException("CSR is hybrid but CA cert is not hybrid (SubjectAltPublicKeyInfo / AltSignatureAlgorithm extensions missing)");
-            }
-
-            AltSignatureAlgorithm altSigAlgoExt = AltSignatureAlgorithm.fromExtensions(caExts);
-            String altSigAlgoOid = altSigAlgoExt.getAlgorithm().getAlgorithm().getId();
-            String altSigAlgo = ViewCommand.oidToName(altSigAlgoOid);
-
-            SubjectAltPublicKeyInfo caAltKeyInfo = SubjectAltPublicKeyInfo.fromExtensions(caExts);
-            SubjectPublicKeyInfo caAltSpki = SubjectPublicKeyInfo.getInstance(caAltKeyInfo.toASN1Primitive());
-            PublicKey caAltPubKey = new JcaPEMKeyConverter().setProvider("BC").getPublicKey(caAltSpki);
-
-            // Validate CA alt key corresponds to CA cert alt public key
-            ContentSigner testSigner = new JcaContentSignerBuilder(altSigAlgo).setProvider("BC").build(caAltPrivateKey);
-            testSigner.getOutputStream().write("pqcli-ca-alt-key-check".getBytes(StandardCharsets.UTF_8));
-            byte[] testSig = testSigner.getSignature();
-            ContentVerifierProvider testCVP = new JcaContentVerifierProviderBuilder().setProvider("BC").build(caAltPubKey);
-            ContentVerifier cv = testCVP.get(testSigner.getAlgorithmIdentifier());
-            cv.getOutputStream().write("pqcli-ca-alt-key-check".getBytes(StandardCharsets.UTF_8));
-            if (!cv.verify(testSig)) {
-                throw new IllegalArgumentException("CA alt key does not correspond to the CA cert alt public key");
-            }
-
-            // EE alt PoP
-            Attribute[] altKeyAttrs = csr.getAttributes(Extension.subjectAltPublicKeyInfo);
-            if (altKeyAttrs == null || altKeyAttrs.length == 0) {
-                throw new IllegalArgumentException("Could not extract alt public key from hybrid CSR (attribute at OID 2.5.29.72 missing)");
-            }
-            SubjectAltPublicKeyInfo eeAltKeyInfo = SubjectAltPublicKeyInfo.getInstance(
-                    altKeyAttrs[0].getAttrValues().getObjectAt(0));
-            SubjectPublicKeyInfo eeAltSpki = SubjectPublicKeyInfo.getInstance(eeAltKeyInfo.toASN1Primitive());
-            PublicKey eeAltPubKey = new JcaPEMKeyConverter().setProvider("BC").getPublicKey(eeAltSpki);
-
-            ContentVerifierProvider eeAltVerifier = new JcaContentVerifierProviderBuilder()
-                    .setProvider("BC").build(eeAltPubKey);
-            if (!csr.isAltSignatureValid(eeAltVerifier)) {
-                throw new IllegalArgumentException("CSR alternative signature (alt proof of possession) is invalid");
-            }
-
-            certBuilder.addExtension(Extension.subjectAltPublicKeyInfo, false,
-                    SubjectAltPublicKeyInfo.getInstance(eeAltPubKey.getEncoded()));
-            ContentSigner altSigner = new JcaContentSignerBuilder(altSigAlgo).setProvider("BC").build(caAltPrivateKey);
-            X509CertificateHolder certHolder = certBuilder.build(primarySigner, false, altSigner);
-
-            // Post-build sanity: both signatures must verify before returning
-            X509Certificate certificate = new JcaX509CertificateConverter().setProvider("BC").getCertificate(certHolder);
-            try {
-                certificate.verify(caCert.getPublicKey(), "BC");
-            } catch (Exception e) {
-                throw new RuntimeException("Post-build sanity: primary sig invalid: " + e.getMessage());
-            }
-            X509CertificateHolder issuedHolder = new X509CertificateHolder(certHolder.getEncoded());
-            ContentVerifierProvider caAltVerifier = new JcaContentVerifierProviderBuilder().setProvider("BC").build(caAltPubKey);
-            if (!issuedHolder.isAlternativeSignatureValid(caAltVerifier)) {
-                throw new RuntimeException("Post-build sanity: alt sig on issued cert invalid");
-            }
-            return certificate;
-
-        } else {
-            // Non-hybrid path
-            X509CertificateHolder certHolder = certBuilder.build(primarySigner);
-            return new JcaX509CertificateConverter().setProvider("BC").getCertificate(certHolder);
         }
     }
 }

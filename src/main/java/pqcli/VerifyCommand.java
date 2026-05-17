@@ -213,12 +213,6 @@ public class VerifyCommand implements Callable<Integer> {
     // Mode B-dynamic: dynamic path builder with full policy checks
     // =========================================================================
 
-    // =========================================================================
-    // Static direct-core verify methods — no ProviderSetup, no file loading.
-    // Called by IndustrialBenchmarkRunner. out=nullOutputStream() suppresses
-    // informational output; System.err is used for failures throughout.
-    // =========================================================================
-
     /**
      * Mode A: single-link primary + hybrid alt-sig verification.
      * caCert null → self-signed (cert verifies against its own key).
