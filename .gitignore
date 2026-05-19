@@ -45,4 +45,16 @@ out/
 ### NetBeans ###
 /nbproject/private/
 /build/
+
+# Benchmarking harness — generated and local artifacts (not source)
+benchmarks/results/
+benchmarks/diagnostics/
+benchmarks/micro/target/
+benchmarks/micro/dependency-reduced-pom.xml
 benchmarks/.build/
+benchmarks/__pycache__/
+benchmarks/**/*.pyc
+benchmarks/BENCHMARK_MACHINE.md
+benchmarks/bench.sh
+benchmarks/parse.py
+benchmarks/micro/run_micro.sh

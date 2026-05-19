@@ -1,0 +1,24 @@
+# Benchmark results (timestamped run output)
+results/
+diagnostics/
+
+# Build artifacts
+micro/target/
+micro/dependency-reduced-pom.xml
+.build/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Temporary files generated during runs
+*.tmp
+*.log
+
+# Local machine / environment notes
+BENCHMARK_MACHINE.md
+
+# Deprecated scripts (excluded if accidentally present)
+bench.sh
+parse.py
+micro/run_micro.sh

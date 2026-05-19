@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>pqcli.bench</groupId>
+  <artifactId>pqcli-bench-micro</artifactId>
+  <version>1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+  <name>pqcli JMH microbenchmarks</name>
+
+  <description>
+    JMH microbenchmarks for pqcli.
+    Layer A: primitive keygen / sign / verify operations (BC provider, no CLI overhead)
+    Layer B: PKI object operations — CSR, cert generation, cert verify, DER/PEM encode
+
+    Build prerequisite: pqcli must be installed to local Maven repo first:
+      cd ../../pqcli-main &amp;&amp; mvn install -q
+
+    Build this project:
+      mvn clean package
+
+    Run (dry):
+      java -jar target/pqcli-bench-micro.jar -wi 2 -i 5 -f 1 -bm avgt -tu ms -rf json -rff raw.json
+
+    Run (stable, 100 measured iterations = 5 forks × 20 iterations):
+      java -jar target/pqcli-bench-micro.jar -wi 10 -i 20 -f 5 -bm avgt -tu ms -rf json -rff raw.json
+  </description>
+
+  <properties>
+    <maven.compiler.source>23</maven.compiler.source>
+    <maven.compiler.target>23</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <jmh.version>1.37</jmh.version>
+    <uberjar.name>pqcli-bench-micro</uberjar.name>
+  </properties>
+
+  <dependencies>
+    <!-- pqcli fat jar (install with: cd ../../pqcli-main && mvn install) -->
+    <dependency>
+      <groupId>pqcli</groupId>
+      <artifactId>pqcli</artifactId>
+      <version>0.1.0</version>
+    </dependency>
+
+    <!-- JMH core -->
+    <dependency>
+      <groupId>org.openjdk.jmh</groupId>
+      <artifactId>jmh-core</artifactId>
+      <version>${jmh.version}</version>
+    </dependency>
+
+    <!-- JMH annotation processor (generates benchmark boilerplate at compile time) -->
+    <dependency>
+      <groupId>org.openjdk.jmh</groupId>
+      <artifactId>jmh-generator-annprocess</artifactId>
+      <version>${jmh.version}</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- Annotation processing for JMH -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <source>23</source>
+          <target>23</target>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>org.openjdk.jmh</groupId>
+              <artifactId>jmh-generator-annprocess</artifactId>
+              <version>${jmh.version}</version>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
+      </plugin>
+
+      <!-- Fat JAR: relocates JMH internals to avoid classpath conflicts -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <finalName>${uberjar.name}</finalName>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>org.openjdk.jmh.Main</mainClass>
+                </transformer>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+              </transformers>
+              <filters>
+                <filter>
+                  <!-- suppress shade warnings about unsigned jars -->
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
