@@ -47,6 +47,7 @@ out/
 /build/
 
 # Benchmarking harness — generated and local artifacts (not source)
+benchmarks/.gitignore
 benchmarks/results/
 benchmarks/diagnostics/
 benchmarks/micro/target/

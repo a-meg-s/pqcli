@@ -46,8 +46,7 @@ from pathlib import Path
 from typing import Optional
 
 SCRIPT_DIR      = Path(__file__).resolve().parent
-PROJECT_DIR     = SCRIPT_DIR.parent
-PQCLI_DIR       = PROJECT_DIR / 'pqcli-main'
+PQCLI_DIR       = SCRIPT_DIR.parent
 BENCH_JAVA_SRC  = SCRIPT_DIR / 'java' / 'pqcli' / 'IndustrialBenchmarkRunner.java'
 BENCH_BUILD_DIR = SCRIPT_DIR / '.build' / 'industrial'
 
@@ -212,8 +211,15 @@ def check_timev(tmpdir: Path) -> bool:
     finally: f.unlink(missing_ok=True)
 
 def auto_detect_jar() -> Optional[Path]:
-    candidate = PQCLI_DIR / 'target' / 'pqcli-0.1.0.jar'
-    return candidate if candidate.exists() else None
+    target_dir = PQCLI_DIR / 'target'
+    exact = target_dir / 'pqcli-0.1.0.jar'
+    if exact.exists():
+        return exact
+    candidates = [
+        p for p in target_dir.glob('pqcli-*.jar')
+        if not any(p.name.endswith(s) for s in ('-sources.jar', '-javadoc.jar', '-tests.jar'))
+    ]
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def compile_bench_helper(jar: Path, build_dir: Path) -> bool:

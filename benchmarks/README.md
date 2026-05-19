@@ -52,14 +52,28 @@ availability from the JVM/BC path. Comparability is limited; see `metadata.json`
 - Maven 3.6+ on PATH
 - Python 3.8+
 - `/usr/bin/time -v` (GNU time, standard on Debian/Ubuntu)
-- `pqcli-main/target/pqcli-0.1.0.jar` (built via `mvn clean package`)
+- `target/pqcli-0.1.0.jar` (built via `mvn clean package` from `pqcli-main/`)
 - Optional: `taskset` for CPU pinning, `perf` for software counters
 
-Build pqcli first:
+`benchmarks/` lives inside `pqcli-main/`. Build from the repo root:
+
 ```bash
-cd pqcli-main
+# From pqcli-main/
 mvn clean package
 ```
+
+Scripts resolve the JAR automatically from `__file__` — no CWD dependency.
+Run from either `pqcli-main/` or `pqcli-main/benchmarks/`:
+
+```bash
+# From pqcli-main/
+python3 benchmarks/run_industrial_benchmarks.py --profile industrial-thesis-core --taskset-cpu 0
+
+# Or from pqcli-main/benchmarks/
+python3 run_industrial_benchmarks.py --profile industrial-thesis-core --taskset-cpu 0
+```
+
+Pass `--jar <path>` to override JAR discovery.
 
 ## Macro benchmark (run_macro_benchmarks.py)
 
@@ -111,6 +125,8 @@ Raw per-stage rows (`rfc9763-stage*`) go to `dual_step_breakdown.csv` — diagno
 If a stage or pregen step fails, an explicit skip row is written to `skips.csv` with the reason.
 
 ### Quick start
+
+Run from `pqcli-main/` (or use full paths from `pqcli-main/benchmarks/`):
 
 ```bash
 # Smoke dry run (always do this first)

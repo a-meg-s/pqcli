@@ -46,8 +46,7 @@ from pathlib import Path
 from typing import Optional
 
 SCRIPT_DIR  = Path(__file__).resolve().parent
-PROJECT_DIR = SCRIPT_DIR.parent
-PQCLI_DIR   = PROJECT_DIR / 'pqcli-main'
+PQCLI_DIR   = SCRIPT_DIR.parent
 
 sys.path.insert(0, str(SCRIPT_DIR))
 from benchmark_config import (
@@ -1775,7 +1774,16 @@ def main() -> int:
 
     ts = time.strftime('%Y%m%d_%H%M%S')
     if args.jar is None:
-        args.jar = PQCLI_DIR / 'target' / 'pqcli-0.1.0.jar'
+        target_dir = PQCLI_DIR / 'target'
+        exact = target_dir / 'pqcli-0.1.0.jar'
+        if exact.exists():
+            args.jar = exact
+        else:
+            candidates = [
+                p for p in target_dir.glob('pqcli-*.jar')
+                if not any(p.name.endswith(s) for s in ('-sources.jar', '-javadoc.jar', '-tests.jar'))
+            ]
+            args.jar = candidates[0] if len(candidates) == 1 else target_dir / 'pqcli-0.1.0.jar'
     if args.out is None:
         args.out = SCRIPT_DIR / 'results' / ts
     if args.staging is None:

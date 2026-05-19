@@ -46,8 +46,7 @@ from pathlib import Path
 from typing import Optional
 
 SCRIPT_DIR  = Path(__file__).resolve().parent
-PROJECT_DIR = SCRIPT_DIR.parent
-PQCLI_DIR   = PROJECT_DIR / 'pqcli-main'
+PQCLI_DIR   = SCRIPT_DIR.parent
 MICRO_DIR   = SCRIPT_DIR / 'micro'
 
 sys.path.insert(0, str(SCRIPT_DIR))
