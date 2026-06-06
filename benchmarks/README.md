@@ -370,12 +370,3 @@ benchmarks/results/<timestamp>/openssl/
     stderr/<iter>.log
     timev/<iter>.txt
 ```
-
----
-
-## Deprecated scripts
-
-The following old scripts remain for reference but are not used by the new harness:
-- `bench.sh` — replaced by `run_macro_benchmarks.py`
-- `parse.py` — replaced by `aggregate_results.py`
-- `micro/run_micro.sh` — replaced by `run_micro_benchmarks.py`
